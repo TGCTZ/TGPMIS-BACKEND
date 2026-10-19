@@ -440,9 +440,7 @@ def test_certificate_context_carries_a_qr_and_the_lab_marks(settings, user):
     assert "official_stamp" in context
 
 
-def test_verify_page_is_public_and_reports_a_valid_certificate(
-    certifiable_stone, client
-):
+def test_verify_page_is_public_and_reports_a_valid_certificate(certifiable_stone, client):
     """Whoever holds the paper can check it without an account."""
     stone = certifiable_stone
     certificate = issue_certificate(stone)
@@ -455,8 +453,8 @@ def test_verify_page_is_public_and_reports_a_valid_certificate(
     assert format_reference_number(certificate.certificate_number) in body
     assert 'alt="National emblem of Tanzania"' in body
     assert 'alt="Tanzania Gemmological Centre logo"' in body
-    assert '<h2>Gemstone Photo</h2>' in body
-    assert body.index('<h2>Gemstone Photo</h2>') < body.index('<h2>Description</h2>')
+    assert "<h2>Gemstone Photo</h2>" in body
+    assert body.index("<h2>Gemstone Photo</h2>") < body.index("<h2>Description</h2>")
     assert "Colour" in body
     assert "Shape / Cut" in body
     assert "Optic character" in body
