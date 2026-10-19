@@ -27,6 +27,7 @@ from apps.core.services import format_reference_number
 from apps.gems.enums import CertificateStatus, WeightUnit
 
 from .models import Certificate
+from .services.assets import asset_data_uri, photo_data_uri
 
 TEMPLATE = "certificates/verify.html"
 
@@ -42,8 +43,14 @@ class CertificateVerifyView(View):
         of a piece of paper and needs to be told what it is worth, not shown a
         stack trace or a generic error.
         """
+        header = {
+            "lab_name": settings.CERTIFICATE_LAB_NAME,
+            "ministry_name": settings.CERTIFICATE_MINISTRY_NAME,
+            "coat_of_arms": asset_data_uri("coat_of_arms"),
+            "tgc_logo": asset_data_uri("tgc_logo"),
+        }
         certificate = (
-            Certificate.objects.select_related("stone", "stone__order")
+            Certificate.objects.select_related("stone", "stone__order", "report")
             .filter(certificate_number=certificate_number)
             .first()
         )
@@ -55,7 +62,7 @@ class CertificateVerifyView(View):
                 {
                     "certificate_number": format_reference_number(certificate_number),
                     "found": False,
-                    "lab_name": settings.CERTIFICATE_LAB_NAME,
+                    **header,
                 },
                 status=404,
             )
@@ -72,13 +79,17 @@ class CertificateVerifyView(View):
                 ),
                 "is_revoked": is_revoked,
                 "weight_unit": WeightUnit(certificate.weight_unit_snapshot).symbol,
+                "photo": (
+                    photo_data_uri(certificate.photo_snapshot)
+                    or photo_data_uri(certificate.stone.photo)
+                ),
                 "report_number": (
                     format_reference_number(
                         certificate.report_number_snapshot
                         or certificate.report.report_number
                     )
                 ),
-                "lab_name": settings.CERTIFICATE_LAB_NAME,
+                **header,
             },
             # A revoked certificate is a successful lookup of a document that no
             # longer stands, not a failed one. 200 with a loud banner.

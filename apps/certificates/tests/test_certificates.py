@@ -429,12 +429,12 @@ def test_certificate_context_carries_a_qr_and_the_lab_marks(settings, user):
     assert "official_stamp" in context
 
 
-def test_verify_page_is_public_and_reports_a_valid_certificate(settings, user, client):
+def test_verify_page_is_public_and_reports_a_valid_certificate(
+    certifiable_stone, client
+):
     """Whoever holds the paper can check it without an account."""
-    stone = _paid_stone(settings)
-    report = create_finalizable_report(stone, user)
-    finalize_report(report, user=user)
-    certificate = issue_certificate(stone, user=user)
+    stone = certifiable_stone
+    certificate = issue_certificate(stone)
 
     response = client.get(f"/verify/{certificate.certificate_number}/")
 
@@ -442,6 +442,19 @@ def test_verify_page_is_public_and_reports_a_valid_certificate(settings, user, c
     body = response.content.decode()
     assert "Valid certificate" in body
     assert format_reference_number(certificate.certificate_number) in body
+    assert 'alt="National emblem of Tanzania"' in body
+    assert 'alt="Tanzania Gemmological Centre logo"' in body
+    assert '<h2>Gemstone Photo</h2>' in body
+    assert body.index('<h2>Gemstone Photo</h2>') < body.index('<h2>Description</h2>')
+    assert "Colour" in body
+    assert "Shape / Cut" in body
+    assert "Optic character" in body
+    assert "Specific gravity" in body
+    assert "Group / Species" in body
+    assert "Treatment" in body
+    assert "Gemmologist 1" in body
+    assert "Official Stamp" not in body
+    assert "Instruments Used" not in body
     # The public page identifies the stone, never its owner.
     assert stone.order.customer.full_name not in body
 
@@ -466,7 +479,7 @@ def test_verify_page_answers_plainly_for_an_unknown_number(client):
     response = client.get("/verify/CERT-2026-9999/")
 
     assert response.status_code == 404
-    assert "Not found" in response.content.decode()
+    assert "Certificate not found" in response.content.decode()
 
 
 # ---------------------------------------------------------------------------
