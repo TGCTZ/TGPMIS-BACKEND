@@ -201,7 +201,8 @@ class IdentificationReportViewSet(BaseModelViewSet, viewsets.ModelViewSet):
                 feed_row(
                     kind="stone",
                     record_id=stone.pk,
-                    reference=detail.get("order_reference"),
+                    reference=detail.get("stone_reference")
+                    or detail.get("order_reference"),
                     customer=detail.get("customer_name"),
                     type_name="Stone findings",
                     status="Awaiting findings",

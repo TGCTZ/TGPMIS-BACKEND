@@ -590,6 +590,7 @@
       <div class="section-header">Identification</div>
       <table class="grid rows-8-5">
         <tr><td class="label">Group / Species</td><td class="value">{{ certificate.species_snapshot|default:certificate.stone_type_snapshot|default:"—" }}</td></tr>
+        <tr><td class="label">Stone type</td><td class="value">{{ certificate.stone_type_snapshot|default:"—" }}</td></tr>
         <tr><td class="label">Variety</td><td class="value">{{ certificate.variety_snapshot|default:"—" }}</td></tr>
         <tr><td class="label">Nature</td><td class="value">{{ certificate.nature_type_snapshot|default:"—" }}</td></tr>
         <tr><td class="label">Treatment</td><td class="value">{{ certificate.treatment_snapshot|default:"—" }}</td></tr>

@@ -1,11 +1,7 @@
 {% comment %}
-  The page a phone lands on after scanning a certificate's QR code.
-
-  Self-contained and offline-capable: inline CSS, no images, no fonts, no
-  JavaScript. It is read on a phone, in a shop, possibly on a bad connection,
-  by somebody deciding whether to trust a piece of paper.
-
-  Deliberately says nothing about the customer - see verify.py.
+  Public certificate verification page for phone cameras.
+  Mirrors the issued certificate's findings, omitting the official stamp and
+  instrument checklist. Customer details are never published here.
 {% endcomment %}
 <!DOCTYPE html>
 <html lang="en">
@@ -15,135 +11,183 @@
   <meta name="robots" content="noindex">
   <title>Verify {{ certificate_number }}</title>
   <style>
-    :root { color-scheme: light dark; }
+    :root { color-scheme: light; }
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      padding: 24px 16px;
+      padding: 20px 12px 32px;
       font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
-      background: #f8fafc;
+      background: #f1f5f9;
       color: #0f172a;
     }
+    .page { width: min(100%, 54rem); margin: 0 auto; }
     .card {
-      max-width: 34rem;
-      margin: 0 auto;
+      overflow: hidden;
       background: #fff;
+      border: 1px solid #dbe3ed;
+      border-radius: 16px;
+      box-shadow: 0 8px 24px rgb(15 23 42 / 6%);
+    }
+    .masthead {
+      display: grid;
+      grid-template-columns: 64px minmax(0, 1fr) 64px;
+      align-items: center;
+      gap: 12px;
+      padding: 18px 20px;
+      border-bottom: 1px solid #e2e8f0;
+      text-align: center;
+    }
+    .mark { width: 100%; height: 58px; object-fit: contain; }
+    .titles { min-width: 0; }
+    .country, .ministry, .lab, .doc { display: block; }
+    .country { color: #000080; font-size: 1rem; font-weight: 700; }
+    .ministry { color: #334155; font-size: .92rem; font-weight: 600; }
+    .lab { color: #000080; font-size: 1.08rem; font-weight: 800; }
+    .doc { color: #475569; font-size: .82rem; }
+    .status {
+      padding: 14px 16px;
+      color: #fff;
+      text-align: center;
+      font-weight: 700;
+    }
+    .status.valid { background: #15803d; }
+    .status.revoked { background: #b91c1c; }
+    .status.unknown { background: #475569; }
+    .number { display: block; margin-top: 3px; font-size: 1.05rem; overflow-wrap: anywhere; }
+    .content { display: grid; gap: 16px; padding: 16px; }
+    .note { margin: 0; color: #475569; }
+    .section {
+      min-width: 0;
+      padding: 14px;
       border: 1px solid #e2e8f0;
       border-radius: 12px;
+      background: #fff;
+    }
+    h2 { margin: 0 0 12px; color: #000080; font-size: 1rem; }
+    .photo-frame {
+      display: grid;
+      min-height: 120px;
+      max-height: 360px;
+      place-items: center;
       overflow: hidden;
+      border-radius: 8px;
+      background: #f1f5f9;
     }
-    .banner {
-      padding: 20px 16px;
-      text-align: center;
-      color: #fff;
-      font-weight: 700;
-      letter-spacing: 1px;
-      text-transform: uppercase;
+    .photo-frame img { display: block; width: 100%; max-height: 360px; object-fit: contain; }
+    .missing { padding: 32px 12px; color: #64748b; text-align: center; }
+    .facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .fact {
+      min-width: 0;
+      padding-bottom: 9px;
+      border-bottom: 1px solid #edf1f5;
     }
-    .banner.valid { background: #16a34a; }
-    .banner.revoked { background: #dc2626; }
-    .banner.unknown { background: #64748b; }
-    .banner .number {
-      display: block;
-      margin-top: 6px;
-      font-size: 1.25rem;
-      letter-spacing: 0;
-      text-transform: none;
-    }
-    .body { padding: 16px; }
-    .note {
-      margin: 0 0 16px;
-      color: #475569;
-      font-size: 0.95rem;
-    }
-    dl { margin: 0; }
-    .pair {
-      display: flex;
-      justify-content: space-between;
-      gap: 16px;
-      padding: 10px 0;
-      border-bottom: 1px solid #f1f5f9;
-    }
-    .pair:last-child { border-bottom: none; }
-    dt { color: #64748b; font-size: 0.85rem; }
-    dd { margin: 0; text-align: right; font-weight: 600; }
-    .lab {
-      max-width: 34rem;
-      margin: 16px auto 0;
-      text-align: center;
-      color: #64748b;
-      font-size: 0.8rem;
-    }
-    @media (prefers-color-scheme: dark) {
-      body { background: #020617; color: #f8fafc; }
-      .card { background: #0f172a; border-color: #334155; }
-      .pair { border-bottom-color: #1e293b; }
-      .note, dt, .lab { color: #94a3b8; }
+    dt { color: #64748b; font-size: .78rem; }
+    dd { margin: 2px 0 0; font-weight: 600; overflow-wrap: anywhere; }
+    .statement { margin: 0; color: #475569; font-size: .9rem; }
+    .footer { margin: 14px 0 0; color: #64748b; text-align: center; font-size: .8rem; }
+    @media (max-width: 560px) {
+      body { padding: 10px 8px 24px; }
+      .masthead { grid-template-columns: 44px minmax(0, 1fr) 44px; gap: 8px; padding: 14px 10px; }
+      .mark { height: 44px; }
+      .country { font-size: .88rem; }
+      .ministry, .doc { font-size: .75rem; }
+      .lab { font-size: .92rem; }
+      .content { gap: 12px; padding: 10px; }
+      .section { padding: 12px; }
+      .facts { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+      .status { padding: 12px 10px; }
     }
   </style>
 </head>
 <body>
-
-{% if not found %}
-  <div class="card">
-    <div class="banner unknown">
-      Not found
-      <span class="number">{{ certificate_number }}</span>
-    </div>
-    <div class="body">
-      <p class="note">
-        No certificate with this number has been issued. Check the number as
-        printed, and contact the laboratory if it appears on a document you are
-        holding.
-      </p>
-    </div>
-  </div>
-{% else %}
-  <div class="card">
-    <div class="banner {% if is_revoked %}revoked{% else %}valid{% endif %}">
-      {% if is_revoked %}Revoked — this certificate no longer stands{% else %}Valid certificate{% endif %}
-      <span class="number">{{ certificate_number }}</span>
-    </div>
-    <div class="body">
-      {% if is_revoked %}
-        <p class="note">
-          This certificate was issued by the laboratory and has since been
-          withdrawn. It should not be relied on. Contact the laboratory for the
-          current position.
-        </p>
-      {% else %}
-        <p class="note">
-          This certificate was issued by the laboratory and stands as recorded
-          below. The findings are as they were on the date of issue.
-        </p>
-      {% endif %}
-
-      <dl>
-        <div class="pair"><dt>Report number</dt><dd>{{ report_number }}</dd></div>
-        <div class="pair"><dt>Issued</dt><dd>{{ certificate.issued_at|date:"j F Y" }}</dd></div>
-        <div class="pair"><dt>Stone type</dt><dd>{{ certificate.stone_type_snapshot }}</dd></div>
-        <div class="pair">
-          <dt>Weight</dt>
-          <dd>{{ certificate.weight_snapshot }} {{ weight_unit }}</dd>
+  <main class="page">
+    <article class="card">
+      <header class="masthead">
+        {% if coat_of_arms %}<img class="mark" src="{{ coat_of_arms }}" alt="National emblem of Tanzania">{% else %}<span></span>{% endif %}
+        <div class="titles">
+          <span class="country">United Republic of Tanzania</span>
+          <span class="ministry">{{ ministry_name }}</span>
+          <span class="lab">{{ lab_name }}</span>
+          <span class="doc">Gemstone Identification Report</span>
         </div>
-        {% if certificate.species_snapshot %}
-          <div class="pair"><dt>Species</dt><dd>{{ certificate.species_snapshot }}</dd></div>
-        {% endif %}
-        {% if certificate.variety_snapshot %}
-          <div class="pair"><dt>Variety</dt><dd>{{ certificate.variety_snapshot }}</dd></div>
-        {% endif %}
-        {% if certificate.color_snapshot %}
-          <div class="pair"><dt>Colour</dt><dd>{{ certificate.color_snapshot }}</dd></div>
-        {% endif %}
-        {% if certificate.origin_snapshot %}
-          <div class="pair"><dt>Origin</dt><dd>{{ certificate.origin_snapshot }}</dd></div>
-        {% endif %}
-      </dl>
-    </div>
-  </div>
-{% endif %}
+        {% if tgc_logo %}<img class="mark" src="{{ tgc_logo }}" alt="Tanzania Gemmological Centre logo">{% else %}<span></span>{% endif %}
+      </header>
 
-<p class="lab">{{ lab_name }}</p>
+      {% if not found %}
+        <div class="status unknown">
+          Certificate not found
+          <span class="number">{{ certificate_number }}</span>
+        </div>
+        <div class="content">
+          <p class="note">No certificate with this number has been issued. Check the number as printed, and contact the laboratory if it appears on a document you are holding.</p>
+        </div>
+      {% else %}
+        <div class="status {% if is_revoked %}revoked{% else %}valid{% endif %}">
+          {% if is_revoked %}Revoked — this certificate no longer stands{% else %}Valid certificate{% endif %}
+          <span class="number">{{ certificate_number }}</span>
+        </div>
 
+        <div class="content">
+          <section class="section">
+            <h2>Gemstone Photo</h2>
+            <div class="photo-frame">
+              {% if photo %}<img src="{{ photo }}" alt="Photograph of the certified gemstone">{% else %}<div class="missing">Photograph not available</div>{% endif %}
+            </div>
+          </section>
+
+          {% if is_revoked %}
+            <p class="note">This certificate was issued by the laboratory and has since been withdrawn. It should not be relied on. Contact the laboratory for the current position.</p>
+          {% else %}
+            <p class="note">This certificate was issued by the laboratory and stands as recorded below. The findings are as they were on the date of issue.</p>
+          {% endif %}
+
+          <section class="section">
+            <h2>Certificate details</h2>
+            <dl class="facts">
+              <div class="fact"><dt>Report number</dt><dd>{{ report_number }}</dd></div>
+              <div class="fact"><dt>Issued</dt><dd>{{ certificate.issued_at|date:"j F Y" }}</dd></div>
+            </dl>
+          </section>
+
+          <section class="section">
+            <h2>Description</h2>
+            <dl class="facts">
+              <div class="fact"><dt>Colour</dt><dd>{{ certificate.color_snapshot|default:"—" }}</dd></div>
+              <div class="fact"><dt>Shape / Cut</dt><dd>{{ certificate.shape_cut_snapshot|default:"—" }}</dd></div>
+              <div class="fact"><dt>Weight</dt><dd>{{ certificate.weight_snapshot }} {{ weight_unit }}</dd></div>
+              <div class="fact"><dt>Transparency</dt><dd>{{ certificate.transparency_snapshot|default:"—" }}</dd></div>
+              <div class="fact"><dt>Optic character</dt><dd>{{ certificate.optic_character_snapshot|default:"—" }}</dd></div>
+              <div class="fact"><dt>R.I.</dt><dd>{{ certificate.refractive_index_snapshot|default:"—" }}</dd></div>
+              <div class="fact"><dt>Specific gravity</dt><dd>{{ certificate.specific_gravity_snapshot|default:"—" }}</dd></div>
+            </dl>
+          </section>
+
+          <section class="section">
+            <h2>Identification</h2>
+            <dl class="facts">
+              <div class="fact"><dt>Group / Species</dt><dd>{{ certificate.species_snapshot|default:certificate.stone_type_snapshot|default:"—" }}</dd></div>
+              <div class="fact"><dt>Stone type</dt><dd>{{ certificate.stone_type_snapshot|default:"—" }}</dd></div>
+              <div class="fact"><dt>Variety</dt><dd>{{ certificate.variety_snapshot|default:"—" }}</dd></div>
+              <div class="fact"><dt>Nature</dt><dd>{{ certificate.nature_type_snapshot|default:"—" }}</dd></div>
+              <div class="fact"><dt>Treatment</dt><dd>{{ certificate.treatment_snapshot|default:"—" }}</dd></div>
+              <div class="fact"><dt>Origin</dt><dd>{{ certificate.origin_snapshot|default:"—" }}</dd></div>
+              <div class="fact"><dt>Comment</dt><dd>{{ certificate.comments_snapshot|default:"—"|linebreaksbr }}</dd></div>
+            </dl>
+          </section>
+
+          <section class="section">
+            <h2>Gemmologists</h2>
+            <dl class="facts">
+              <div class="fact"><dt>Gemmologist 1</dt><dd>{{ certificate.gemmologist|default:"—" }}</dd></div>
+              <div class="fact"><dt>Gemmologist 2</dt><dd>{{ certificate.gemmologist_two|default:"—" }}</dd></div>
+            </dl>
+          </section>
+
+          <p class="statement">The information described in this report has been examined by at least two qualified Gemmologists. Please see the back side for additional information.</p>
+        </div>
+      {% endif %}
+    </article>
+    <p class="footer">{{ lab_name }}</p>
+  </main>
 </body>
 </html>

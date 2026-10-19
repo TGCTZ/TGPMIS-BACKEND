@@ -86,6 +86,8 @@ def issue_certificate(stone, *, user=None) -> Certificate:
         raise ServiceError("Stone has no recorded weight to certify.")
     if stone.stone_type_id is None:
         raise ServiceError("Stone has no recorded exact type to certify.")
+    if not stone.photo:
+        raise ServiceError("Stone has no photograph to certify.")
 
     certificate = Certificate(
         stone=stone,

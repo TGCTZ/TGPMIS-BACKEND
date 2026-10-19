@@ -160,6 +160,7 @@ FINALIZE_REQUIRED_FIELDS = (
     ("color", "colour"),
     ("stone.weight", "weight"),
     ("conclusion", "comments"),
+    ("stone.photo", "photograph"),
 )
 
 
