@@ -175,6 +175,17 @@ def test_certification_needs_a_recorded_weight(settings, user):
         issue_certificate(stone, user=user)
 
 
+def test_certification_requires_a_photograph(settings, user):
+    """Legacy finalized reports still cannot issue without a photograph."""
+    stone = _paid_stone(settings)
+    report = create_finalizable_report(stone, user)
+    finalize_report(report, user=user)
+    stone.photo.delete(save=True)
+
+    with pytest.raises(ServiceError, match="no photograph"):
+        issue_certificate(stone, user=user)
+
+
 def test_certification_worklist_is_the_three_guards_as_a_queue(
     settings, certifiable_stone, user
 ):

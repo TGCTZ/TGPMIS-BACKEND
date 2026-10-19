@@ -633,6 +633,18 @@ def test_finalize_needs_the_required_findings(paid_stone, user):
     assert not report.is_finalized
 
 
+def test_finalize_requires_a_stone_photograph(paid_stone, user):
+    """A certificate cannot be issued from findings without its required photo."""
+    report = create_finalizable_report(paid_stone, user)
+    paid_stone.photo.delete(save=True)
+
+    with pytest.raises(ServiceError, match="photograph"):
+        finalize_report(report, user=user)
+
+    report.refresh_from_db()
+    assert not report.is_finalized
+
+
 def test_finalize_names_only_what_is_still_missing(paid_stone, user):
     """The three that are answered drop out of the message."""
     report = create_finalizable_report(paid_stone, user, conclusion="")
