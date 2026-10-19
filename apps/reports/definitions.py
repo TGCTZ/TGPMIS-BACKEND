@@ -21,7 +21,7 @@ SECTIONS = {
     },
     "collections": {
         "report": "financial",
-        "title": "Collections",
+        "title": "Payments received",
         "description": "Processed payments by transaction date; exceptions are separate.",
         "permissions": ("billing.view_payment",),
     },
@@ -29,7 +29,8 @@ SECTIONS = {
         "report": "financial",
         "title": "Unprocessed payments",
         "description": (
-            "Unprocessed notifications by transaction date, excluded from collections."
+            "Unprocessed notifications by transaction date, excluded from "
+            "payments received."
         ),
         "permissions": ("billing.view_payment",),
     },
@@ -55,12 +56,6 @@ SECTIONS = {
             "Registered stone records by creation date, rather than submitted quantities."
         ),
         "permissions": ("orders.view_stone",),
-    },
-    "findings": {
-        "report": "operational",
-        "title": "Findings finalized",
-        "description": "Finalized identification reports by finalization date.",
-        "permissions": ("identification.view_identificationreport",),
     },
     "certificates": {
         "report": "operational",
