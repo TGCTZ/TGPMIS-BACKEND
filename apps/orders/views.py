@@ -144,6 +144,15 @@ class OrderViewSet(BaseModelViewSet, viewsets.ModelViewSet):
         )
         serializer.instance = order
 
+    def perform_update(self, serializer):
+        """Lock order details after GePG has returned its control number."""
+        bill = getattr(serializer.instance, "bill", None)
+        if bill is not None and bill.control_number:
+            raise PermissionDenied(
+                "This order cannot be edited after GePG returns its control number."
+            )
+        serializer.save()
+
     @extend_schema(responses=OrderSerializer)
     @extend_schema(request=HoldOrderSerializer, responses=OrderSerializer)
     @action(detail=True, methods=["post"])
