@@ -503,7 +503,8 @@ def test_default_header_shows_both_marks_and_all_titles(settings, certifiable_st
     assert context["header_style"] == "clean"
     assert context["coat_of_arms"].startswith("data:image/png;base64,")
     assert context["tgc_logo"].startswith("data:image/png;base64,")
-    assert "The United Republic of Tanzania" in html
+    assert "United Republic of Tanzania" in html
+    assert "The United Republic of Tanzania" not in html
     assert settings.CERTIFICATE_MINISTRY_NAME in html
     assert settings.CERTIFICATE_LAB_NAME in html
     assert "Gemstone Identification Report" in html
