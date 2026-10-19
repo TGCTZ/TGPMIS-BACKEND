@@ -61,9 +61,7 @@ def generate_order_reference_number() -> str:
     start, end = financial_year()
     year_code = f"{start % 100:02d}{end % 100:02d}"
     sequence = (
-        OrderSequence.objects.select_for_update()
-        .filter(financial_year=year_code)
-        .first()
+        OrderSequence.objects.select_for_update().filter(financial_year=year_code).first()
     )
     if sequence is None:
         try:

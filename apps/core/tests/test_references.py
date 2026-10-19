@@ -88,9 +88,7 @@ def test_related_references_reuse_the_order_sequence_and_stone_label():
 
     assert reference_number_for_order(order, "BILL") == "BILL-2627-42"
     assert reference_number_for_order(order, "TGC", stone_label="A") == "TGC-2627-42-A"
-    assert (
-        reference_number_for_order(order, "CERT", stone_label="1") == "CERT-2627-42-1"
-    )
+    assert reference_number_for_order(order, "CERT", stone_label="1") == "CERT-2627-42-1"
 
 
 def test_display_format_adds_slash_only_to_the_financial_year():
