@@ -677,11 +677,15 @@ def test_order_reports_its_bill_number(settings, admin_user, auth_client):
 
     before = client.get(f"/api/v1/orders/{order.pk}/")
     assert before.data["bill_number"] is None
+    assert before.data["bill_total_amount"] is None
+    assert before.data["bill_currency"] is None
 
     bill = generate_bill_for_order(order)
 
     after = client.get(f"/api/v1/orders/{order.pk}/")
     assert after.data["bill_number"] == format_reference_number(bill.bill_number)
+    assert after.data["bill_total_amount"] == "1000.00"
+    assert after.data["bill_currency"] == "TZS"
 
 
 def test_order_stage_follows_the_least_advanced_stone(settings, user):

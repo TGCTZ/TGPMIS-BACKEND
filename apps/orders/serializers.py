@@ -173,6 +173,8 @@ class OrderSerializer(AuditFieldsMixin):
     reference_number = DisplayReferenceField(read_only=True)
     bill_number = serializers.SerializerMethodField()
     control_number = serializers.SerializerMethodField()
+    bill_total_amount = serializers.SerializerMethodField()
+    bill_currency = serializers.SerializerMethodField()
     # The label the next stone identified here will carry, so the identification
     # dialog can name it before it exists.
     next_stone_label = serializers.SerializerMethodField()
@@ -222,6 +224,8 @@ class OrderSerializer(AuditFieldsMixin):
             "next_stone_label",
             "bill_number",
             "control_number",
+            "bill_total_amount",
+            "bill_currency",
             "stage",
             "stage_label",
             "hold_status",
@@ -237,6 +241,8 @@ class OrderSerializer(AuditFieldsMixin):
             "reference_number",
             "bill_number",
             "control_number",
+            "bill_total_amount",
+            "bill_currency",
             "stage",
             "stage_label",
             "hold_status",
@@ -266,6 +272,16 @@ class OrderSerializer(AuditFieldsMixin):
         """
         bill = getattr(obj, "bill", None)
         return (bill.control_number or None) if bill is not None else None
+
+    def get_bill_total_amount(self, obj) -> str | None:
+        """The amount charged on this order's bill, or None if it is unbilled."""
+        bill = getattr(obj, "bill", None)
+        return str(bill.total_amount) if bill is not None else None
+
+    def get_bill_currency(self, obj) -> str | None:
+        """The currency of this order's bill, or None if it is unbilled."""
+        bill = getattr(obj, "bill", None)
+        return bill.currency if bill is not None else None
 
     def get_stage(self, obj) -> str:
         """The stage code, for a client to style and filter on."""
