@@ -43,5 +43,7 @@ def test_findings_feed_does_not_duplicate_a_draft_report_as_a_stone(
     rows = {(row["kind"], row["record_id"]): row for row in response.data["results"]}
     assert rows[("report", report.pk)]["status"] == "Draft"
     assert ("stone", bare_stone.pk) in rows
+    bare_stone_row = rows[("stone", bare_stone.pk)]
+    assert bare_stone_row["reference"] == bare_stone_row["detail"]["stone_reference"]
     assert ("report", finalized.pk) not in rows
     assert IdentificationReport.objects.filter(stone=stone).count() == 1
