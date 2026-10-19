@@ -193,7 +193,7 @@ Business verbs are `POST` actions rather than field writes, so each one goes
 through its service and leaves an audit trail:
 
 ```
-POST /api/v1/orders/{id}/stones/       register the next stone (labels A, B, C…)
+POST /api/v1/orders/{id}/stones/       register the next stone (numeric labels on new orders)
 POST /api/v1/orders/{id}/hold/         {hold_status, reason} — pause or withdraw
 POST /api/v1/orders/{id}/release/      put a held order back to active
 POST /api/v1/stones/{id}/transition/   {to_status, note}

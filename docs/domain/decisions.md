@@ -24,21 +24,24 @@ page when those contracts change. The sequence of work is described in
 
 ## References
 
-`generate_reference_number()` allocates the order sequence for a July–June
-financial year. Related documents derive that sequence with
-`reference_number_for_order()`; they do not allocate separate counters.
+`generate_order_reference_number()` allocates the order sequence for a July–June
+financial year using a locked `OrderSequence` row. Related documents derive that
+sequence with `reference_number_for_order()`; they do not allocate separate
+counters. New sequence values have no zero padding. Existing references retain
+their original stored values and still format correctly.
 
 | Document | Stored example | Display example |
 | --- | --- | --- |
-| Order | `ORD-2627-00042` | `ORD-26/27-00042` |
-| Bill | `BILL-2627-00042` | `BILL-26/27-00042` |
-| Findings for stone A | `TGC-2627-00042-A` | `TGC-26/27-00042-A` |
-| Certificate for stone A | `CERT-2627-00042-A` | `CERT-26/27-00042-A` |
+| Order | `ORD-2627-42` | `ORD-26/27-42` |
+| Bill | `BILL-2627-42` | `BILL-26/27-42` |
+| Findings for stone 1 | `TGC-2627-42-1` | `TGC-26/27-42-1` |
+| Certificate for stone 1 | `CERT-2627-42-1` | `CERT-26/27-42-1` |
 
 Stored values remain slash-free for gateway identifiers, filenames, and URLs.
-`format_reference_number()` adds the slash for display. The allocator scans
-deleted orders too and relies on the database constraint to reject concurrent
-duplicates; it does not reserve a sequence under a database lock.
+`format_reference_number()` adds the slash for display. The annual counter is
+initialized from existing orders, including soft-deleted ones, and locked while
+allocating. Old order and stone labels are not rewritten: new orders use numeric
+stone labels, while existing letter-labeled orders continue alphabetically.
 
 ## Record relationships
 

@@ -2,11 +2,11 @@
 
 import re
 
-from django.db.models import Max
+from django.db import IntegrityError, transaction
 
-_ORDER_REFERENCE_RE = re.compile(r"^ORD-(\d{4})-(\d{1,5})$")
+_ORDER_REFERENCE_RE = re.compile(r"^ORD-(\d{4})-(\d+)$")
 _DISPLAY_REFERENCE_RE = re.compile(
-    r"^(?P<prefix>[A-Z]+)-(?P<year>\d{4})-(?P<sequence>\d{1,5})(?P<label>-[A-Za-z0-9]+)?$"
+    r"^(?P<prefix>[A-Z]+)-(?P<year>\d{4})-(?P<sequence>\d+)(?P<label>-[A-Za-z0-9]+)?$"
 )
 
 
@@ -29,45 +29,64 @@ def financial_year(when=None) -> tuple[int, int]:
     return moment.year - 1, moment.year
 
 
-def generate_reference_number(model, field: str, prefix: str, *, width: int = 5) -> str:
-    """Allocate the next order sequence, e.g. ``ORD-2627-00001``.
+def _highest_order_sequence(order_model, year_code: str) -> int:
+    """Read the largest stored sequence for a year, including deleted orders."""
+    stem = f"ORD-{year_code}-"
+    highest = 0
+    for reference in order_model.all_objects.filter(
+        reference_number__startswith=stem
+    ).values_list("reference_number", flat=True):
+        match = _ORDER_REFERENCE_RE.fullmatch(reference)
+        if match is not None and match.group(1) == year_code:
+            highest = max(highest, int(match.group(2)))
+    return highest
 
-    Related bill, findings, and certificate numbers derive their year and
-    sequence from the order instead of maintaining their own counters.
 
-    The year component is the financial year rather than the calendar one,
-    because that is the period the lab reports on, and the sequence restarts with
-    it - the year pair says when, the sequence says how many since July. Both
-    years are written as two digits, so 2026/2027 reads ``2627``: short enough to
-    say over a counter and to fit a printed line, and still unambiguous for a lab
-    whose records do not reach back to 1926.
+@transaction.atomic
+def generate_order_reference_number() -> str:
+    """Allocate the next order number, e.g. ``ORD-2627-1``.
 
-    Scans ``all_objects`` rather than the default manager so a soft-deleted
-    record never has its number handed out a second time. This is a
-    read-then-write, so the caller's model needs a unique constraint on
-    ``field`` as the backstop against a concurrent duplicate.
+    The counter is initialized from all stored orders in the current financial
+    year, including soft-deleted records, so historical identifiers are never
+    reused. A row lock serializes later allocations for that year. The unique
+    order-reference constraint remains the final safeguard against duplicates.
 
-    Args:
-        model: The model class to scan.
-        field: Name of the field holding the reference.
-        prefix: Short uppercase prefix, e.g. ``"ORD"``.
-        width: Zero-padded width of the sequence component.
+    A savepoint handles two requests creating the first counter row for a new
+    financial year at the same time. After the row exists, each allocator locks
+    it before incrementing.
     """
+    from apps.core.models import OrderSequence
+    from apps.orders.models import Order
+
     start, end = financial_year()
-    stem = f"{prefix}-{start % 100:02d}{end % 100:02d}-"
-    latest = (
-        model.all_objects.filter(**{f"{field}__startswith": stem})
-        .aggregate(peak=Max(field))
-        .get("peak")
+    year_code = f"{start % 100:02d}{end % 100:02d}"
+    sequence = (
+        OrderSequence.objects.select_for_update().filter(financial_year=year_code).first()
     )
-    # Max() orders lexically, which is what we want only because the sequence is
-    # zero-padded to a fixed width - hence `width` being fixed rather than a
-    # per-call whim. It is also why changing `width` needs a clean sequence: with
-    # "0010" and "00011" in the same year, "0010" sorts higher, the scan keeps
-    # returning 11, and the unique constraint rejects the duplicate. Five digits
-    # (99,999 a year per document type) replaced four on a flushed database.
-    sequence = int(latest.rsplit("-", 1)[1]) + 1 if latest else 1
-    return f"{stem}{sequence:0{width}d}"
+    if sequence is None:
+        try:
+            with transaction.atomic():
+                sequence = OrderSequence.objects.create(
+                    financial_year=year_code,
+                    last_sequence=_highest_order_sequence(Order, year_code),
+                )
+        except IntegrityError:
+            # Another transaction inserted the unique year row while this one
+            # was scanning. The savepoint keeps this transaction usable.
+            sequence = OrderSequence.objects.select_for_update().get(
+                financial_year=year_code
+            )
+
+    next_value = int(sequence.last_sequence) + 1
+    reference = f"ORD-{year_code}-{next_value}"
+    # Imported or manually restored orders can appear after a counter was
+    # initialized. Keep their identifiers reserved as well.
+    while Order.all_objects.filter(reference_number=reference).exists():
+        next_value += 1
+        reference = f"ORD-{year_code}-{next_value}"
+    sequence.last_sequence = str(next_value)
+    sequence.save(update_fields=["last_sequence"])
+    return reference
 
 
 def reference_number_for_order(
@@ -87,7 +106,7 @@ def reference_number_for_order(
         )
 
     year, sequence = match.groups()
-    reference = f"{prefix}-{year}-{int(sequence):05d}"
+    reference = f"{prefix}-{year}-{int(sequence)}"
     return f"{reference}-{stone_label}" if stone_label else reference
 
 

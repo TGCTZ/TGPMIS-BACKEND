@@ -71,9 +71,10 @@ than by importing `apps.identification` or `apps.billing`, because certificates
 sit above both in the layer order.
 
 On success the stone transitions to `certified`, and the certificate number
-uses the order's year and five-digit sequence plus the stone label. For example,
-stored `CERT-2627-00042-A` is displayed as `CERT-26/27-00042-A`. Verification
-URLs keep the slash-free stored identifier.
+uses the order's year and natural-number sequence plus the stone label. For
+example, a new stone can receive stored `CERT-2627-42-1`, displayed as
+`CERT-26/27-42-1`. Existing padded numbers and letter labels remain unchanged.
+Verification URLs keep the slash-free stored identifier.
 
 There is no certificate revoke action. Existing records with status `revoked` remain readable and retain their watermark on PDFs and the public verification page. A correction authorized by `identification.edit_finalized_report` updates the findings snapshot on the existing certificate; its number, issuance date, issuer, and signatory names remain unchanged.
 
@@ -238,42 +239,36 @@ that change state.
 
 ## Report numbers
 
-The number printed as REPORT NO is not the certificate number. It is minted when
-the identification report is created, by `generate_reference_number()` in
-`apps/core/services.py` — the same generator every other reference uses:
+The number printed as REPORT NO is not the certificate number. It is created
+when the identification report is saved by `reference_number_for_order()` in
+`apps/core/services.py`, using the order's sequence and the stone's label:
 
 ```
-TGC-2627-00765
-    └─┬┘ └─┬─┘
-      │     sequence
+TGC-2627-42-1
+    └─┬┘ └┬┘ └ stone label
+      │   sequence
       financial year 2026/2027
 ```
 
 The Tanzanian financial year runs **July to June**, so August 2026 and March
 2027 both fall in `2026/2027`. `financial_year()` answers that question.
 
-Three things about this are decisions rather than details:
+The sequence restarts each financial year and is allocated once for the order;
+bills, reports and certificates reuse it with their own prefix. New sequences
+are unpadded (`42`), while old stored sequences retain their original padding
+(`00042`). `format_reference_number()` preserves the stored sequence and adds
+the slash only for display.
 
-- **One generator, one shape.** Orders, bills, reports and certificates all read
-  `PREFIX-<yy><yy>-NNNNN`, so a number read aloud or typed into a search box is
-  recognisable without knowing which document it came from. Report numbers used
-  to carry slashes, which made them unsafe in a filename or a URL path segment —
-  `certificate_number` reaches both.
-- **Both years are two digits.** `2627`, not `2026-2027`: short enough to say
-  over a counter and to fit a printed line, and unambiguous for a lab whose
-  records do not reach back to 1926. The leading zero is kept, so 2029/2030
-  reads `2930` and the segment stays four characters wide — a narrower one would
-  stop sorting against its neighbours.
-- **The sequence restarts each financial year.** The year pair says *when*; the
-  sequence says *how many since July*. Each prefix counts on its own, because
-  the scan is stemmed on the prefix as well as the year pair.
-- **The width is fixed at five digits** - 99,999 of each document a year.
-  `Max()` orders lexically, which is correct only because the sequence is
-  zero-padded to a constant width. Changing the width is not a cosmetic change:
-  with `0010` and `00011` in the same year, `0010` sorts higher, the generator
-  keeps handing out 11, and the unique constraint rejects it. It went from four
-  to five on a flushed database; a live one would need its existing numbers
-  re-padded in a data migration first.
+New orders use numeric stone labels (`1`, `2`, …). Existing orders that already
+have letter-labeled stones keep those labels; newly created reports and
+certificates for those stones retain the letter suffix. For a legacy order that
+continues past `Z`, labels advance as `AA`, `AB`, …. Existing orders, reports,
+and certificates are never rewritten by the numbering change.
+
+`OrderSequence` stores the last sequence for each financial year. Its row lock
+serializes concurrent order creation; when a year's counter is first created,
+it starts after the largest existing order reference, including soft-deleted
+orders. The unique order-reference constraint remains a final duplicate guard.
 
 The value is snapshotted onto the certificate as `report_number_snapshot` at
 issue time, like everything else on the page.
