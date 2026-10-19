@@ -29,7 +29,8 @@ SECTIONS = {
         "report": "financial",
         "title": "Unprocessed payments",
         "description": (
-            "Unprocessed notifications by transaction date, excluded from payments received."
+            "Unprocessed notifications by transaction date, excluded from "
+            "payments received."
         ),
         "permissions": ("billing.view_payment",),
     },
