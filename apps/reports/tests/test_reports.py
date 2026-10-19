@@ -213,6 +213,9 @@ def test_lab_day_boundaries_and_undated_notifications(api_client, admin_user):
     assert response.data["count"] == 1
     assert response.data["results"][0]["event_date"] == "2026-09-01"
     assert _summary(response, "collections")["missing_dates"] == 1
+    assert next(
+        section for section in response.data["sections"] if section["key"] == "collections"
+    )["title"] == "Payments received"
 
 
 def test_operational_events_use_independent_dates_and_distinct_orders(
@@ -240,7 +243,8 @@ def test_operational_events_use_independent_dates_and_distinct_orders(
     )
     assert response.status_code == 200
     counts = {section["key"]: section["count"] for section in response.data["sections"]}
-    assert counts == {"orders": 1, "stones": 2, "findings": 1, "certificates": 0}
+    assert counts == {"orders": 1, "stones": 2, "certificates": 0}
+    assert "findings" not in counts
     assert response.data["results"][0]["stones"] == 7
 
 
