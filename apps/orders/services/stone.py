@@ -48,17 +48,33 @@ def transition_stone(stone: Stone, to_status: str, *, user=None, note: str = "")
 def next_stone_label(order) -> str:
     """The label the next stone identified against this order will carry.
 
-    A, B, C... Breaks above 26 stones, which no order has yet reached.
+    New orders use ``1``, ``2``, ``3``. An order with existing alphabetic stone
+    labels keeps that scheme, including spreadsheet-style labels after ``Z``;
+    this preserves the identity of work already attached to legacy labels.
 
     Extracted so the screen can *show* the label before it is allocated rather
-    than reimplementing the rule - a dialog that says "this will be stone C" and
-    a service that writes "D" is the kind of disagreement nobody notices until a
+    than reimplementing the rule - a dialog that promises one label while the
+    service writes another is the kind of disagreement nobody notices until a
     customer is holding the paperwork.
 
     Args:
         order: The order the stone would belong to.
     """
-    return chr(65 + order.stones.count())
+    existing_labels = Stone.all_objects.filter(order=order).values_list(
+        "label", flat=True
+    )
+    has_legacy_letters = any(label.isalpha() for label in existing_labels)
+    next_number = order.stones.count() + 1
+    if not has_legacy_letters:
+        return str(next_number)
+
+    # Excel-style labels keep legacy orders readable if one ever exceeds 26
+    # stones, while new orders no longer depend on a finite alphabet.
+    label = ""
+    while next_number:
+        next_number, remainder = divmod(next_number - 1, 26)
+        label = chr(65 + remainder) + label
+    return label
 
 
 @transaction.atomic
@@ -69,8 +85,9 @@ def add_stone(order: Order, *, stone_category=None, stone_type=None, user=None) 
     category, its category is derived so old clients can continue to identify
     stones while the frontend rolls out.
 
-    The label is the next letter of the alphabet, and the order cannot hold more
-    stones than the customer said they brought.
+    New orders receive numeric labels. Existing orders with alphabetic labels
+    continue that sequence. The order cannot hold more stones than the customer
+    said they brought.
 
     Args:
         order: The order the stone belongs to.

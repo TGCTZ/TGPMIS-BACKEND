@@ -15,7 +15,7 @@ from apps.certificates.selectors import certification_worklist
 from apps.certificates.services import issue_certificate
 from apps.certificates.services.pdf import certificate_context
 from apps.core.exceptions import ServiceError
-from apps.core.services import format_reference_number
+from apps.core.services import format_reference_number, reference_number_for_order
 from apps.gems.enums import BillStatus, NatureType, WeightUnit
 from apps.gems.tests.factories import (
     ColorFactory,
@@ -63,16 +63,15 @@ def billed_stone(settings):
 
 
 def test_create_report_allocates_a_number(paid_stone, user):
-    """The service, not the client, mints TGC-<fy>-NNNN."""
+    """The service derives an unpadded report reference from the order."""
     report = create_report(stone=paid_stone, user=user)
 
-    # The shape every reference in the system takes; the year pair is a
-    # financial year, so it is asserted as a shape rather than against today's
-    # calendar.
-    assert re.fullmatch(r"TGC-\d{4}-\d{5}-A", report.report_number)
-    assert report.report_number.split("-")[2] == (
-        paid_stone.order.reference_number.split("-")[2].zfill(5)
-    )
+    assert re.fullmatch(r"TGC-\d{4}-\d+-\d+", report.report_number)
+    report_year, report_sequence, stone_label = report.report_number.split("-")[1:]
+    order_year, order_sequence = paid_stone.order.reference_number.split("-")[1:]
+    assert report_year == order_year
+    assert int(report_sequence) == int(order_sequence)
+    assert stone_label == paid_stone.label == "1"
     assert report.identified_by == user
     assert not report.is_finalized
 
@@ -155,6 +154,7 @@ def test_findings_worklist_holds_paid_unfinalized_stones(paid_stone, billed_ston
 
 def test_report_endpoint_creates_via_the_service(paid_stone, admin_user, auth_client):
     """POST mints the number and ignores a client-supplied one."""
+    original_order_reference = paid_stone.order.reference_number
     response = auth_client(admin_user).post(
         "/api/v1/identification-reports/",
         {
@@ -166,10 +166,15 @@ def test_report_endpoint_creates_via_the_service(paid_stone, admin_user, auth_cl
     )
 
     assert response.status_code == 201, response.data
-    assert re.fullmatch(r"TGC-\d{2}/\d{2}-\d{5}-A", response.data["report_number"])
+    assert re.fullmatch(r"TGC-\d{2}/\d{2}-\d+-1", response.data["report_number"])
     assert response.data["stone_reference"] == (
-        f"{format_reference_number(paid_stone.order.reference_number)}-A"
+        format_reference_number(
+            reference_number_for_order(paid_stone.order, "ORD", stone_label="1")
+        )
     )
+    # New paperwork uses the unpadded sequence without rewriting the order row.
+    paid_stone.order.refresh_from_db()
+    assert paid_stone.order.reference_number == original_order_reference
     assert response.data["identified_by_label"] is not None
 
 

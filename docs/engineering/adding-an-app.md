@@ -71,22 +71,26 @@ models.UniqueConstraint(
 Reference numbers come from `apps/core/services.py`:
 
 ```python
-generate_reference_number(Order, "reference_number", "ORD")  # ORD-2627-00001
-reference_number_for_order(order, "BILL")  # BILL-2627-00001
-reference_number_for_order(order, "TGC", stone_label="A")  # TGC-2627-00001-A
+generate_order_reference_number()  # ORD-2627-1
+reference_number_for_order(order, "BILL")  # BILL-2627-1
+reference_number_for_order(order, "TGC", stone_label="1")  # TGC-2627-1-1
 ```
 
-For orders, this allocates the shared five-digit sequence. Related bills,
-findings, and certificates derive their numbers from the order with
+For orders, this allocates the next natural-number sequence for the current
+financial year from the locked `OrderSequence` counter. The counter is first
+initialized from all existing order references, including soft-deleted orders.
+Related bills, findings, and certificates derive their sequence from the order with
 `reference_number_for_order(order, prefix, stone_label=...)`; they do not have
-independent counters. `format_reference_number()` adds the financial-year slash
-to human-facing values while stored and gateway IDs stay slash-free.
+independent counters. Existing padded references remain valid and unchanged.
+`format_reference_number()` adds the financial-year slash to human-facing values
+while stored and gateway IDs stay slash-free.
 
 References share an order sequence and use a prefix to identify the document;
-per-stone report and certificate numbers add the stone label. The year pair is
-the **financial** year — July to June, each year written as two digits and
-answered by `financial_year()`. The order sequence restarts with it. See
-[certificates.md](certificates.md).
+per-stone report and certificate numbers add the stone label. New orders label
+stones `1`, `2`, …; an order with existing letter labels continues `A`, `B`, …,
+then `AA`, `AB`, …. The year pair is the **financial** year — July to June,
+each year written as two digits and answered by `financial_year()`. The order
+sequence restarts with it. See [certificates.md](certificates.md).
 
 ## 4. Services
 

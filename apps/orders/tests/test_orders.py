@@ -18,11 +18,11 @@ pytestmark = pytest.mark.django_db
 
 
 def test_create_order_allocates_a_reference_number():
-    """The service, not the client, mints ORD-<fy>-NNNNN."""
+    """The service, not the client, mints an unpadded ORD-<fy>-N."""
     order = create_order(customer=CustomerFactory(), stone_count=2)
 
     assert order.reference_number.startswith("ORD-")
-    assert order.reference_number.endswith("-00001")
+    assert order.reference_number.endswith("-1")
 
 
 def test_reference_numbers_do_not_reuse_a_deleted_one():
@@ -38,8 +38,8 @@ def test_reference_numbers_do_not_reuse_a_deleted_one():
     assert second.reference_number != first.reference_number
 
 
-def test_add_stone_labels_stones_in_sequence():
-    """Stones are lettered in the order they are identified."""
+def test_new_orders_label_stones_with_natural_numbers():
+    """New stone labels count from one without a letter-based ceiling."""
     order = OrderFactory(stone_count=3)
     stone_type = StoneTypeFactory()
 
@@ -49,7 +49,33 @@ def test_add_stone_labels_stones_in_sequence():
         add_stone(order, stone_type=stone_type).label,
     ]
 
-    assert labels == ["A", "B", "C"]
+    assert labels == ["1", "2", "3"]
+
+
+def test_numeric_stone_labels_continue_past_the_alphabet():
+    """Numeric labels do not switch formats when there are more than 26 stones."""
+    order = OrderFactory(stone_count=27)
+    for number in range(1, 27):
+        StoneFactory(order=order, label=str(number))
+
+    assert add_stone(order, stone_type=StoneTypeFactory()).label == "27"
+
+
+def test_existing_letter_labeled_orders_continue_their_labels():
+    """A rollout does not rename stones already attached to an old order."""
+    order = OrderFactory(stone_count=3)
+    StoneFactory(order=order, label="A")
+
+    assert add_stone(order, stone_type=StoneTypeFactory()).label == "B"
+
+
+def test_legacy_letter_labels_continue_after_z():
+    """Legacy orders use spreadsheet-style labels past the old alphabet limit."""
+    order = OrderFactory(stone_count=27)
+    for index in range(26):
+        StoneFactory(order=order, label=chr(65 + index))
+
+    assert add_stone(order, stone_type=StoneTypeFactory()).label == "AA"
 
 
 def test_add_stone_refuses_more_than_the_customer_submitted():
@@ -148,7 +174,7 @@ def test_add_stone_endpoint_identifies_and_caps(admin_user, auth_client):
         f"/api/v1/orders/{order.pk}/stones/", {"stone_type": stone_type.pk}
     )
     assert first.status_code == 201, first.data
-    assert first.data["label"] == "A"
+    assert first.data["label"] == "1"
 
     second = client.post(
         f"/api/v1/orders/{order.pk}/stones/", {"stone_type": stone_type.pk}
@@ -377,7 +403,7 @@ def test_a_failed_order_leaves_no_orphan_customer(monkeypatch):
     def boom(*args, **kwargs):
         raise RuntimeError("reference allocation failed")
 
-    monkeypatch.setattr(order_service, "generate_reference_number", boom)
+    monkeypatch.setattr(order_service, "generate_order_reference_number", boom)
 
     with pytest.raises(RuntimeError):
         create_order(
@@ -424,7 +450,7 @@ def test_a_gemmologist_may_identify_a_stone(gemmologist_user, auth_client):
     )
 
     assert response.status_code == 201, response.data
-    assert response.data["label"] == "A"
+    assert response.data["label"] == "1"
 
 
 def test_a_receptionist_may_no_longer_identify_a_stone(viewer_user, auth_client):
@@ -859,7 +885,7 @@ def test_next_stone_label_matches_what_add_stone_allocates():
     order = OrderFactory(stone_count=3)
     stone_type = StoneTypeFactory()
 
-    for expected in ("A", "B", "C"):
+    for expected in ("1", "2", "3"):
         assert next_stone_label(order) == expected
         assert add_stone(order, stone_type=stone_type).label == expected
 
@@ -870,7 +896,7 @@ def test_next_stone_label_is_null_once_the_order_is_full(admin_user, auth_client
     client = auth_client(admin_user)
 
     before = client.get(f"/api/v1/orders/{order.pk}/")
-    assert before.data["next_stone_label"] == "A"
+    assert before.data["next_stone_label"] == "1"
 
     add_stone(order, stone_type=StoneTypeFactory())
 

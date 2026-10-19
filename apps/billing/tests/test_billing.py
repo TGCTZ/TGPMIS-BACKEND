@@ -36,9 +36,10 @@ def test_generating_a_bill_prices_every_stone(billable_order):
     bill = generate_bill_for_order(billable_order)
 
     assert bill.bill_number.startswith("BILL-")
-    assert (
-        bill.bill_number.split("-")[1:] == billable_order.reference_number.split("-")[1:]
-    )
+    bill_year, bill_sequence = bill.bill_number.split("-")[1:]
+    order_year, order_sequence = billable_order.reference_number.split("-")[1:]
+    assert bill_year == order_year
+    assert int(bill_sequence) == int(order_sequence)
     assert bill.total_amount == Decimal("150000.00")
     assert bill.items.count() == 3
     assert bill.status == BillStatus.PENDING

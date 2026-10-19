@@ -4,7 +4,10 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.core.exceptions import ServiceError
-from apps.core.services import format_reference_number, generate_reference_number
+from apps.core.services import (
+    format_reference_number,
+    generate_order_reference_number,
+)
 from apps.gems.enums import BillStatus, OrderHold
 from apps.notifications.models import NotificationKind
 from apps.notifications.services import notify_subscribers
@@ -53,7 +56,7 @@ def create_order(
         customer.save()
 
     order = Order(
-        reference_number=generate_reference_number(Order, "reference_number", "ORD"),
+        reference_number=generate_order_reference_number(),
         customer=customer,
         received_date=received_date or timezone.now().date(),
         stone_count=stone_count,
