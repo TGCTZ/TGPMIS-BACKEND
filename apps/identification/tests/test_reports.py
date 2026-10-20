@@ -205,7 +205,9 @@ def test_finalize_endpoint_requires_the_finalize_permission(
 def test_finalize_endpoint_issues_a_certificate_automatically(
     paid_stone, admin_user, auth_client
 ):
-    """Finalizing paid findings issues the stone's certificate in the same action."""
+    """Findings without stone type can finalize and issue a certificate."""
+    paid_stone.stone_type = None
+    paid_stone.save(update_fields=["stone_type"])
     report = create_finalizable_report(paid_stone, None)
 
     response = auth_client(admin_user).post(
@@ -218,6 +220,7 @@ def test_finalize_endpoint_issues_a_certificate_automatically(
     assert report.is_finalized
     assert certificate.report == report
     assert certificate.issued_by == admin_user
+    assert certificate.stone_type_snapshot == ""
 
 
 def test_finalize_endpoint_keeps_the_paid_bill_requirement(
@@ -584,8 +587,8 @@ def test_report_endpoint_rejects_a_type_from_another_category(
     assert "belonging to this stone's category" in str(response.data)
 
 
-def test_finalize_requires_exact_type_for_category_only_stone(settings, user):
-    """The saved billing category is not enough to finalize findings."""
+def test_finalize_allows_a_category_only_stone(settings, user):
+    """Stone type is no longer required to finalize findings."""
     settings.GEPG_SIMULATE = True
     order = OrderFactory(stone_count=1)
     category = StoneCategoryFactory(price=Decimal("1000.00"))
@@ -593,8 +596,10 @@ def test_finalize_requires_exact_type_for_category_only_stone(settings, user):
     simulate_payment(generate_bill_for_order(order))
     report = create_finalizable_report(stone, user)
 
-    with pytest.raises(ServiceError, match="stone type"):
-        finalize_report(report, user=user)
+    finalized = finalize_report(report, user=user)
+
+    assert finalized.is_finalized
+    assert stone.stone_type_id is None
 
 
 def test_a_finalized_report_refuses_a_weight_change(paid_stone, admin_user, auth_client):

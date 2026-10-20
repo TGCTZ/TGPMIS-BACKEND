@@ -166,7 +166,9 @@
             <h2>Identification</h2>
             <dl class="facts">
               <div class="fact"><dt>Group / Species</dt><dd>{{ certificate.species_snapshot|default:certificate.stone_type_snapshot|default:"—" }}</dd></div>
-              <div class="fact"><dt>Stone type</dt><dd>{{ certificate.stone_type_snapshot|default:"—" }}</dd></div>
+              {% if certificate.stone_type_snapshot %}
+              <div class="fact"><dt>Stone type</dt><dd>{{ certificate.stone_type_snapshot }}</dd></div>
+              {% endif %}
               <div class="fact"><dt>Variety</dt><dd>{{ certificate.variety_snapshot|default:"—" }}</dd></div>
               <div class="fact"><dt>Nature</dt><dd>{{ certificate.nature_type_snapshot|default:"—" }}</dd></div>
               <div class="fact"><dt>Treatment</dt><dd>{{ certificate.treatment_snapshot|default:"—" }}</dd></div>
