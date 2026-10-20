@@ -80,7 +80,7 @@ def test_issuing_freezes_the_findings(certifiable_stone, user):
     assert certificate.certificate_number == certificate.report.report_number.replace(
         "TGC-", "CERT-", 1
     )
-    assert certificate.stone_type_snapshot == certifiable_stone.stone_type.name
+    assert certificate.stone_type_snapshot == ""
     assert certificate.weight_snapshot == Decimal("2.500")
     assert certificate.weight_unit_snapshot == WeightUnit.CARAT
     assert certificate.color_snapshot == "Red"
@@ -110,6 +110,37 @@ def test_issuing_certifies_the_stone(certifiable_stone, user):
         stone=certifiable_stone, to_status=StoneStatus.CERTIFIED
     ).latest("changed_at")
     assert format_reference_number(certificate.certificate_number) in entry.note
+
+
+def test_certificate_without_stone_type_issues_without_recording_type(
+    certifiable_stone, user, client
+):
+    """New certificates omit stone type while older snapshots remain supported."""
+    stone = certifiable_stone
+    stone.stone_type = None
+    stone.save(update_fields=["stone_type"])
+
+    certificate = issue_certificate(stone, user=user)
+
+    assert certificate.stone_type_snapshot == ""
+    html = render_to_string(TEMPLATE, certificate_context(certificate))
+    assert "Stone type" not in html
+    verification = client.get(f"/verify/{certificate.certificate_number}/")
+    assert verification.status_code == 200
+    assert b"Stone type" not in verification.content
+
+
+def test_certificate_with_existing_type_keeps_legacy_display(certifiable_stone):
+    """Previously saved type snapshots remain visible on older certificates."""
+    certificate = issue_certificate(certifiable_stone)
+    certificate.stone_type_snapshot = certifiable_stone.stone_type.name
+    certificate.save(update_fields=["stone_type_snapshot"])
+
+    html = render_to_string(TEMPLATE, certificate_context(certificate))
+
+    assert certificate.stone_type_snapshot == certifiable_stone.stone_type.name
+    assert "Stone type" in html
+    assert certifiable_stone.stone_type.name in html
 
 
 def test_a_stone_cannot_be_certified_twice(certifiable_stone, user):

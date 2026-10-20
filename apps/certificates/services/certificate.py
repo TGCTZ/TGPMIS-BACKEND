@@ -84,8 +84,6 @@ def issue_certificate(stone, *, user=None) -> Certificate:
     # the rule it actually expresses: a certificate states a weight.
     if stone.weight is None:
         raise ServiceError("Stone has no recorded weight to certify.")
-    if stone.stone_type_id is None:
-        raise ServiceError("Stone has no recorded exact type to certify.")
     if not stone.photo:
         raise ServiceError("Stone has no photograph to certify.")
 
@@ -95,7 +93,9 @@ def issue_certificate(stone, *, user=None) -> Certificate:
         certificate_number=reference_number_for_order(
             stone.order, "CERT", stone_label=stone.label
         ),
-        stone_type_snapshot=stone.stone_type.name,
+        # Stone type is no longer recorded on new certificates. Keep the
+        # non-null snapshot column for older issued certificates.
+        stone_type_snapshot="",
         weight_snapshot=stone.weight,
         weight_unit_snapshot=stone.weight_unit,
         color_snapshot=_name(report.color),
