@@ -11,7 +11,7 @@ from django.db.models import Count, DecimalField, F, OuterRef, Q, Subquery, Sum,
 from django.db.models.functions import Coalesce, Greatest, NullIf
 from django.utils import timezone
 
-from apps.billing.models import Bill, Payment
+from apps.billing.models import Bill, BillItem, Payment
 from apps.certificates.models import Certificate
 from apps.core.services import format_reference_number, reference_number_for_order
 from apps.gems.enums import BillStatus
@@ -193,19 +193,44 @@ def section_summary(key: str, queryset, missing_dates: int) -> dict:
             .order_by("status")
         )
     if key == "stones":
-        categories = list(
+        category_counts = list(
             queryset.order_by()
             .values(name=F("stone_category__name"))
             .annotate(count=Count("pk"))
             .order_by("name")
         )
+        category_amounts = (
+            BillItem.objects.filter(
+                stone_id__in=queryset.order_by().values("pk"),
+                bill__deleted_at__isnull=True,
+            )
+            .order_by()
+            .values(name=F("stone__stone_category__name"), currency=F("bill__currency"))
+            .annotate(amount=Sum("amount"))
+            .order_by("name", "currency")
+        )
+        categories = _grouped_amount_rows(category_counts, category_amounts)
     if key == "certificates":
-        varieties = list(
+        variety_counts = list(
             queryset.order_by()
             .values(name=F("variety_snapshot"))
             .annotate(count=Count("pk"))
             .order_by("name")
         )
+        variety_amounts = (
+            BillItem.objects.filter(
+                stone_id__in=queryset.order_by().values("stone_id"),
+                bill__deleted_at__isnull=True,
+            )
+            .order_by()
+            .values(
+                name=F("stone__certificate__variety_snapshot"),
+                currency=F("bill__currency"),
+            )
+            .annotate(amount=Sum("amount"))
+            .order_by("name", "currency")
+        )
+        varieties = _grouped_amount_rows(variety_counts, variety_amounts)
     return {
         **section_info(key),
         "count": queryset.count(),
@@ -215,6 +240,16 @@ def section_summary(key: str, queryset, missing_dates: int) -> dict:
         "categories": categories,
         "varieties": varieties,
     }
+
+
+def _grouped_amount_rows(counts, totals):
+    """Attach billed amounts by currency without combining unlike currencies."""
+    amounts_by_name = {}
+    for row in totals:
+        amounts_by_name.setdefault(row["name"], []).append(
+            {"currency": row["currency"], "amount": str(row["amount"] or Decimal("0.00"))}
+        )
+    return [{**row, "amounts": amounts_by_name.get(row["name"], [])} for row in counts]
 
 
 def report_sections(keys: list[str], filters: dict) -> dict:
