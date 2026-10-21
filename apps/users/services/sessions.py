@@ -10,7 +10,7 @@ from django.utils import timezone
 
 from apps.users.models import AuthSession
 
-IDLE_TIMEOUT = timedelta(minutes=30)
+IDLE_TIMEOUT = timedelta(minutes=60)
 
 
 def issue_session_refresh(user) -> RefreshToken:
