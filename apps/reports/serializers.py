@@ -44,6 +44,8 @@ class ReportSectionSerializer(serializers.Serializer):
     missing_dates = serializers.IntegerField()
     amounts = serializers.ListField(child=serializers.DictField())
     statuses = serializers.ListField(child=serializers.DictField())
+    categories = serializers.ListField(child=serializers.DictField())
+    varieties = serializers.ListField(child=serializers.DictField())
 
 
 class ReportResultSerializer(serializers.Serializer):

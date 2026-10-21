@@ -162,6 +162,8 @@ def section_queryset(key: str, filters: dict):
 def section_summary(key: str, queryset, missing_dates: int) -> dict:
     """Compute totals from the entire filtered queryset using decimal arithmetic."""
     amounts = []
+    categories = []
+    varieties = []
     if key in ("billing", "outstanding", "collections", "exceptions"):
         currency_field = (
             "report_currency" if key in ("collections", "exceptions") else "currency"
@@ -190,12 +192,28 @@ def section_summary(key: str, queryset, missing_dates: int) -> dict:
             .annotate(count=Count("pk"))
             .order_by("status")
         )
+    if key == "stones":
+        categories = list(
+            queryset.order_by()
+            .values(name=F("stone_category__name"))
+            .annotate(count=Count("pk"))
+            .order_by("name")
+        )
+    if key == "certificates":
+        varieties = list(
+            queryset.order_by()
+            .values(name=F("variety_snapshot"))
+            .annotate(count=Count("pk"))
+            .order_by("name")
+        )
     return {
         **section_info(key),
         "count": queryset.count(),
         "missing_dates": missing_dates,
         "amounts": amounts,
         "statuses": statuses,
+        "categories": categories,
+        "varieties": varieties,
     }
 
 
