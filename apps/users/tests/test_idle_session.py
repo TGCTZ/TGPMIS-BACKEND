@@ -36,7 +36,7 @@ def test_interaction_extends_only_its_login(api_client, user):
     first = _login(api_client, user)
     _login(api_client, user)
     sessions = list(AuthSession.objects.filter(user=user).order_by("last_interaction_at"))
-    old = timezone.now() - timedelta(minutes=29)
+    old = timezone.now() - timedelta(minutes=59)
     AuthSession.objects.filter(user=user).update(last_interaction_at=old)
 
     api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {first['access']}")
@@ -51,7 +51,7 @@ def test_expired_login_rejects_access_and_refresh(api_client, user):
     """Expired sessions must reject both access and refresh tokens."""
     tokens = _login(api_client, user)
     AuthSession.objects.filter(user=user).update(
-        last_interaction_at=timezone.now() - timedelta(minutes=31)
+        last_interaction_at=timezone.now() - timedelta(minutes=61)
     )
 
     api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {tokens['access']}")
