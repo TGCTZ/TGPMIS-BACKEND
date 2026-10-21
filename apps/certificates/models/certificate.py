@@ -55,7 +55,8 @@ class Certificate(BaseModel):
     treatment_snapshot = models.CharField(max_length=100, blank=True, default="")
     nature_type_snapshot = models.CharField(max_length=50, blank=True, default="")
     refractive_index_snapshot = models.CharField(max_length=50, blank=True, default="")
-    # Held as text, not Decimal: it is printed verbatim and never arithmetic.
+    # Held as text to preserve the exact finding; numeric readings are formatted
+    # for display without rewriting this snapshot.
     specific_gravity_snapshot = models.CharField(max_length=50, blank=True, default="")
     comments_snapshot = models.TextField(blank=True, default="")
     # ``[{"name": ..., "used": bool}, ...]``: the full instrument checklist as
