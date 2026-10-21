@@ -10,7 +10,7 @@ from django.utils import timezone
 
 from apps.users.models import AuthSession
 
-IDLE_TIMEOUT = timedelta(minutes=30)
+IDLE_TIMEOUT = timedelta(minutes=60)
 
 
 def issue_session_refresh(user) -> RefreshToken:
@@ -37,7 +37,7 @@ def active_session(user_id, session_id) -> AuthSession:
         AuthSession.objects.filter(pk=session.pk, revoked_at__isnull=True).update(
             revoked_at=now
         )
-        raise AuthenticationFailed("Session expired after 30 minutes of inactivity.")
+        raise AuthenticationFailed("Session expired after 60 minutes of inactivity.")
     return session
 
 
@@ -51,7 +51,7 @@ def record_interaction(user_id, session_id) -> None:
         last_interaction_at__gt=now - IDLE_TIMEOUT,
     ).update(last_interaction_at=now)
     if not updated:
-        raise AuthenticationFailed("Session expired after 30 minutes of inactivity.")
+        raise AuthenticationFailed("Session expired after 60 minutes of inactivity.")
 
 
 def revoke_session(session_id) -> None:
