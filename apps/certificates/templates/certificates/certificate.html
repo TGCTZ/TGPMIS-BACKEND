@@ -29,6 +29,7 @@
   "Please see the back side" refers to pre-printed stationery. There is no
   second page, and there never was one in the system this is ported from.
 {% endcomment %}
+{% load certificate_formatting %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -544,11 +545,11 @@
       <table class="grid rows-10">
         <tr><td class="label">Colour</td><td class="value">{{ certificate.color_snapshot|default:"—" }}</td></tr>
         <tr><td class="label">Shape / Cut</td><td class="value">{{ certificate.shape_cut_snapshot|default:"—" }}</td></tr>
-        <tr><td class="label">Weight</td><td class="value">{{ certificate.weight_snapshot }} {{ weight_unit }}</td></tr>
+        <tr><td class="label">Weight</td><td class="value">{{ certificate.weight_snapshot|format_certificate_measurement }} {{ weight_unit }}</td></tr>
         <tr><td class="label">Transparency</td><td class="value">{{ certificate.transparency_snapshot|default:"—" }}</td></tr>
         <tr><td class="label">Optic character</td><td class="value">{{ certificate.optic_character_snapshot|default:"—" }}</td></tr>
         <tr><td class="label">R.I.</td><td class="value">{{ certificate.refractive_index_snapshot|default:"—" }}</td></tr>
-        <tr><td class="label">Specific gravity</td><td class="value">{{ certificate.specific_gravity_snapshot|default:"—" }}</td></tr>
+        <tr><td class="label">Specific gravity</td><td class="value">{{ certificate.specific_gravity_snapshot|format_certificate_measurement|default:"—" }}</td></tr>
       </table>
     </div>
 

@@ -34,8 +34,11 @@ Four details of the snapshotting are easy to get wrong later:
   `"Transparent"`, not `"transparent"`. The document prints words; storing the
   code would mean re-resolving it through a mapping that may itself have
   changed.
-- **Specific gravity is text, not a decimal.** It is printed verbatim and never
-  used in arithmetic, and lab notation like `2.65 – 2.70` is not a number.
+- **Specific gravity is text, not a decimal.** Its snapshot preserves the exact
+  finding; numeric readings are displayed to two decimal places, including the
+  endpoints of ranges such as `2.65 – 2.70`.
+- **Weight keeps three decimals in storage.** Certificates display it to two
+  decimal places without changing the snapshotted measurement.
 - **Weight is non-null**, and carries its unit. A certificate that states a
   number without its unit states nothing.
 - **People are frozen as names.** `_person()` stores `get_full_name()` at issue

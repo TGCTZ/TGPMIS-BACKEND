@@ -3,6 +3,7 @@
   Mirrors the issued certificate's findings, omitting the official stamp and
   instrument checklist. Customer details are never published here.
 {% endcomment %}
+{% load certificate_formatting %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -154,11 +155,11 @@
             <dl class="facts">
               <div class="fact"><dt>Colour</dt><dd>{{ certificate.color_snapshot|default:"—" }}</dd></div>
               <div class="fact"><dt>Shape / Cut</dt><dd>{{ certificate.shape_cut_snapshot|default:"—" }}</dd></div>
-              <div class="fact"><dt>Weight</dt><dd>{{ certificate.weight_snapshot }} {{ weight_unit }}</dd></div>
+              <div class="fact"><dt>Weight</dt><dd>{{ certificate.weight_snapshot|format_certificate_measurement }} {{ weight_unit }}</dd></div>
               <div class="fact"><dt>Transparency</dt><dd>{{ certificate.transparency_snapshot|default:"—" }}</dd></div>
               <div class="fact"><dt>Optic character</dt><dd>{{ certificate.optic_character_snapshot|default:"—" }}</dd></div>
               <div class="fact"><dt>R.I.</dt><dd>{{ certificate.refractive_index_snapshot|default:"—" }}</dd></div>
-              <div class="fact"><dt>Specific gravity</dt><dd>{{ certificate.specific_gravity_snapshot|default:"—" }}</dd></div>
+              <div class="fact"><dt>Specific gravity</dt><dd>{{ certificate.specific_gravity_snapshot|format_certificate_measurement|default:"—" }}</dd></div>
             </dl>
           </section>
 

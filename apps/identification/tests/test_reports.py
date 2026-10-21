@@ -369,7 +369,7 @@ def test_admin_correction_updates_snapshot_and_preserves_issuance(
     assert verification.status_code == 200
     verification_html = verification.content.decode()
     assert replacement_type.name in verification_html
-    assert "3.125" in verification_html
+    assert "3.13" in verification_html
 
 
 def test_gemmologist_cannot_edit_a_finalized_report(

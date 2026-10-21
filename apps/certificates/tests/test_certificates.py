@@ -499,6 +499,27 @@ def test_verify_page_is_public_and_reports_a_valid_certificate(certifiable_stone
     assert stone.order.customer.full_name not in body
 
 
+def test_certificate_measurements_display_two_decimal_places(certifiable_stone, client):
+    """Render numeric readings consistently without changing their snapshots."""
+    certificate = issue_certificate(certifiable_stone)
+    certificate.weight_snapshot = Decimal("1.250")
+    certificate.specific_gravity_snapshot = "2.675 \u2013 3.5"
+    certificate.save(update_fields=["weight_snapshot", "specific_gravity_snapshot"])
+
+    pdf_html = render_to_string(TEMPLATE, certificate_context(certificate))
+    verify = client.get(f"/verify/{certificate.certificate_number}/")
+    assert verify.status_code == 200
+
+    for body in (pdf_html, verify.content.decode()):
+        assert "1.25" in body
+        assert "2.68 \u2013 3.50" in body
+        assert "2.675" not in body
+
+    certificate.refresh_from_db()
+    assert certificate.weight_snapshot == Decimal("1.250")
+    assert certificate.specific_gravity_snapshot == "2.675 \u2013 3.5"
+
+
 def test_verify_page_says_so_when_a_certificate_is_revoked(settings, user, client):
     """The public verifier continues to identify legacy revoked records."""
     stone = _paid_stone(settings)
