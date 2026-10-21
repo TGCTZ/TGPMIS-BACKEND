@@ -1,5 +1,6 @@
 """API views for the billing domain."""
 
+from auditlog.models import LogEntry
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -9,6 +10,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from django.conf import settings
+from django.db import transaction
 from django.http import Http404
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -23,7 +25,15 @@ from apps.orders.search import ORDER_SEARCH_FIELDS
 from apps.orders.serializers import AddStoneSerializer, OrderSerializer
 
 from .dev import simulate_payment
-from .models import Bill, BillItem, Payment, Reconciliation, ServiceProvider
+from .models import (
+    Bill,
+    BillCancellation,
+    BillItem,
+    GePGRequest,
+    Payment,
+    Reconciliation,
+    ServiceProvider,
+)
 from .selectors import billing_attention_worklist, billing_worklist
 from .serializers import (
     BillCancellationSerializer,
@@ -119,7 +129,79 @@ class BillViewSet(viewsets.ReadOnlyModelViewSet):
         "attention": ["billing.generate_bill"],
         "retry": ["billing.generate_bill"],
         "cancel": ["billing.generate_bill"],
+        "destroy": ["billing.delete_bill"],
     }
+
+    def destroy(self, request, *args, **kwargs):
+        """Soft-delete an unpaid bill after GePG confirms cancellation if needed."""
+        bill = self.get_object()
+        if (
+            bill.status in {BillStatus.PAID, BillStatus.PARTIALLY_PAID}
+            or Payment.all_objects.filter(bill=bill).exists()
+        ):
+            return Response(
+                {"detail": "Bills with any payment history cannot be deleted."},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        was_submitted = (
+            bill.is_gepg_submitted
+            or bool(bill.control_number)
+            or GePGRequest.objects.filter(
+                bill=bill, operation=GePGRequest.Operation.BILL
+            ).exists()
+        )
+        if (
+            was_submitted
+            and not BillCancellation.objects.filter(
+                bill=bill, status_code="7283"
+            ).exists()
+        ):
+            if bill.status == BillStatus.CANCELLED:
+                return Response(
+                    {"detail": "GePG cancellation has not been confirmed."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            record = cancel_bill(
+                bill, reason="Bill deleted by administrator", user=request.user
+            )
+            if record.status_code != "7283":
+                return Response(
+                    {
+                        "detail": (
+                            "GePG has not confirmed cancellation. The bill remains "
+                            "active until cancellation is confirmed."
+                        ),
+                        "status_code": record.status_code,
+                        "status_desc": record.status_desc,
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+        with transaction.atomic():
+            bill = Bill.objects.select_for_update().get(pk=bill.pk)
+            if (
+                bill.status in {BillStatus.PAID, BillStatus.PARTIALLY_PAID}
+                or Payment.all_objects.filter(bill=bill).exists()
+            ):
+                return Response(
+                    {"detail": "The bill received payment and cannot be deleted."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            for item in BillItem.objects.filter(bill=bill):
+                item.delete()
+                LogEntry.objects.log_create(
+                    item,
+                    action=LogEntry.Action.DELETE,
+                    changes={"deleted_at": [None, str(item.deleted_at)]},
+                )
+            bill.delete()
+            LogEntry.objects.log_create(
+                bill,
+                action=LogEntry.Action.DELETE,
+                changes={"deleted_at": [None, str(bill.deleted_at)]},
+            )
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @extend_schema(request=GenerateBillSerializer, responses=BillSerializer)
     @action(detail=False, methods=["post"])
