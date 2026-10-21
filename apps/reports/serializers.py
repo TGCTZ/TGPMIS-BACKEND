@@ -34,6 +34,21 @@ class ReportQuerySerializer(serializers.Serializer):
         return attrs
 
 
+class GroupedReportAmountSerializer(serializers.Serializer):
+    """One billed total in a single currency."""
+
+    currency = serializers.CharField()
+    amount = serializers.DecimalField(max_digits=18, decimal_places=2)
+
+
+class GroupedReportRowSerializer(serializers.Serializer):
+    """One category or variety with its count and currency totals."""
+
+    name = serializers.CharField(allow_blank=True, allow_null=True)
+    count = serializers.IntegerField()
+    amounts = GroupedReportAmountSerializer(many=True)
+
+
 class ReportSectionSerializer(serializers.Serializer):
     """A section's full-result totals, independent of its detail page."""
 
@@ -44,8 +59,8 @@ class ReportSectionSerializer(serializers.Serializer):
     missing_dates = serializers.IntegerField()
     amounts = serializers.ListField(child=serializers.DictField())
     statuses = serializers.ListField(child=serializers.DictField())
-    categories = serializers.ListField(child=serializers.DictField())
-    varieties = serializers.ListField(child=serializers.DictField())
+    categories = GroupedReportRowSerializer(many=True)
+    varieties = GroupedReportRowSerializer(many=True)
 
 
 class ReportResultSerializer(serializers.Serializer):

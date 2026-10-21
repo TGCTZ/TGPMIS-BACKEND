@@ -12,7 +12,7 @@ from django.contrib.auth.models import Permission
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 
-from apps.billing.models import Bill, Payment
+from apps.billing.models import Bill, BillItem, Payment
 from apps.certificates.models import Certificate
 from apps.core.current_user import reset_current_user, set_current_user
 from apps.identification.models import IdentificationReport
@@ -249,6 +249,72 @@ def test_operational_events_use_independent_dates_and_distinct_orders(
     assert counts == {"orders": 1, "stones": 2, "certificates": 0}
     assert "findings" not in counts
     assert response.data["results"][0]["stones"] == 7
+
+
+def test_grouped_stone_and_variety_totals_sum_bill_lines_by_currency(
+    api_client, admin_user
+):
+    """Grouped amounts reflect billed lines and never combine currencies."""
+    first = StoneFactory()
+    second = StoneFactory(stone_category=first.stone_category)
+    type(first).objects.filter(pk__in=[first.pk, second.pk]).update(created_at=_at(8))
+    bills = [
+        _bill(order=first.order, currency="TZS"),
+        _bill(order=second.order, currency="USD"),
+    ]
+    for stone, bill, amount in zip(
+        (first, second), bills, (Decimal("120.00"), Decimal("45.00")), strict=True
+    ):
+        BillItem.objects.create(
+            bill=bill,
+            stone=stone,
+            description="Stone charge",
+            unit_price=amount,
+            amount=amount,
+        )
+    for index, stone in enumerate((first, second), start=1):
+        findings = IdentificationReport.objects.create(
+            stone=stone, report_number=f"VAR-{index}", is_finalized=True
+        )
+        Certificate.objects.create(
+            stone=stone,
+            report=findings,
+            certificate_number=f"VAR-CERT-{index}",
+            weight_snapshot=Decimal("1"),
+            stone_type_snapshot="Quartz",
+            variety_snapshot="Ruby",
+            issued_at=_at(10),
+        )
+
+    api_client.force_authenticate(admin_user)
+    response = api_client.get(
+        "/api/v1/reports/operational/", DATES | {"section": "stones"}
+    )
+    assert response.status_code == 200
+    category = next(
+        row
+        for section in response.data["sections"]
+        for row in section["categories"]
+        if row["name"] == first.stone_category.name
+    )
+    assert category["count"] == 2
+    assert category["amounts"] == [
+        {"currency": "TZS", "amount": "120.00"},
+        {"currency": "USD", "amount": "45.00"},
+    ]
+
+    response = api_client.get(
+        "/api/v1/reports/operational/", DATES | {"section": "certificates"}
+    )
+    assert response.status_code == 200
+    variety = next(
+        row
+        for section in response.data["sections"]
+        for row in section["varieties"]
+        if row["name"] == "Ruby"
+    )
+    assert variety["count"] == 2
+    assert variety["amounts"] == category["amounts"]
 
 
 def test_revoked_certificate_still_counts_as_issuance(api_client, admin_user):
