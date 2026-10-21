@@ -16,7 +16,7 @@ from apps.notifications.services import notify_subscribers
 from apps.orders.services import transition_stone
 
 from ..gateways.gepg import build_payment_ack, parse_payment_notification
-from ..models import Bill, Payment
+from ..models import Bill, BillItem, Payment
 
 logger = logging.getLogger(__name__)
 
@@ -57,11 +57,23 @@ def _apply_payment(header: dict, txn: dict, raw: str) -> None:
     every stone and write a second history entry each time.
     """
     bill = (
-        Bill.objects.filter(bill_number=txn["gepg_bill_id"]).first()
-        or Bill.objects.filter(control_number=txn["bill_ctr_num"]).first()
+        Bill.all_objects.select_for_update()
+        .filter(bill_number=txn["gepg_bill_id"])
+        .first()
+        or Bill.all_objects.select_for_update()
+        .filter(control_number=txn["bill_ctr_num"])
+        .first()
     )
     if bill is None:
         raise ServiceError(f"Bill '{txn['gepg_bill_id']}' not found.")
+
+    # A notification can be in flight while an administrator deletes a bill.
+    # Retain the payment and restore its context instead of orphaning a real
+    # gateway transaction behind the soft-delete manager.
+    if bill.is_deleted:
+        bill.restore()
+        for item in BillItem.all_objects.filter(bill=bill, deleted_at__isnull=False):
+            item.restore()
 
     defaults = {**header, **txn, "bill": bill, "is_processed": True, "raw_request": raw}
     defaults.pop("trx_id", None)
