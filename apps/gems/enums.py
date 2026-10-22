@@ -75,14 +75,13 @@ class NatureType(models.TextChoices):
 class OpticCharacter(models.TextChoices):
     """Optical behavior under polarized light.
 
-    The stored value is the lowercase code; the label carries the expansion the
-    report prints.
+    The stored value is the lowercase code; the label is the uppercase code.
     """
 
-    SR = ("sr", "SR - Singly refractive")
-    ADR = ("adr", "ADR - Anomalous double refractive")
-    DR = ("dr", "DR - Double refractive")
-    AGG = ("agg", "AGG - Aggregate")
+    SR = ("sr", "SR")
+    ADR = ("adr", "ADR")
+    DR = ("dr", "DR")
+    AGG = ("agg", "AGG")
 
 
 class BillStatus(models.TextChoices):
