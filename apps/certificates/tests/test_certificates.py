@@ -375,7 +375,7 @@ def test_certificate_freezes_every_finding_it_prints(settings, user):
     # Enum labels, not stored codes - the document is read by a customer.
     assert certificate.transparency_snapshot == "Transparent"
     assert certificate.treatment_snapshot == "Heated"
-    assert "refractive" in certificate.optic_character_snapshot.lower()
+    assert certificate.optic_character_snapshot == "DR"
 
     # Now rewrite the world the findings came from.
     species.name = "Renamed later"
