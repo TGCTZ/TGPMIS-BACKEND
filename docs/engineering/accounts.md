@@ -11,7 +11,7 @@ Code: `apps/users/services/accounts.py` (the flow),
 ## Inactivity timeout
 
 Each login creates an `AuthSession` identified by the JWT's `sid` claim. The API
-rejects access and refresh tokens once that session has gone 30 minutes without
+rejects access and refresh tokens once that session has gone 60 minutes without
 a reported human interaction. Ordinary API requests do not extend the deadline.
 
 The frontend listens for pointer, click, keyboard, input and wheel events and sends a throttled
