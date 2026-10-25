@@ -1,7 +1,7 @@
 """API views for the order domain."""
 
 from drf_spectacular.utils import extend_schema
-from rest_framework import viewsets
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
@@ -32,6 +32,7 @@ from .serializers import (
 )
 from .services import (
     assert_stone_retypeable,
+    copy_pending_order,
     create_order,
     hold_order,
     release_order,
@@ -120,6 +121,7 @@ class OrderViewSet(BaseModelViewSet, viewsets.ModelViewSet):
         "worklist": ["orders.add_stone"],
         "hold": ["orders.hold_order"],
         "release": ["orders.hold_order"],
+        "copy_after_gepg_timeout": ["orders.add_order"],
     }
 
     def perform_create(self, serializer):
@@ -180,6 +182,20 @@ class OrderViewSet(BaseModelViewSet, viewsets.ModelViewSet):
         """Return a held or cancelled order to active work."""
         order = release_order(self.get_object(), user=request.user)
         return Response(self.get_serializer(order).data)
+
+    @extend_schema(request=None, responses={201: OrderSerializer})
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="copy-after-gepg-timeout",
+    )
+    def copy_after_gepg_timeout(self, request, pk=None):
+        """Create an independent copy after a GePG bill remains unresolved."""
+        order = copy_pending_order(self.get_object(), user=request.user)
+        return Response(
+            self.get_serializer(order).data,
+            status=status.HTTP_201_CREATED,
+        )
 
     @action(detail=False, methods=["get"])
     def worklist(self, request):
