@@ -299,6 +299,9 @@ GEPG_ACK_SUCCESS_CODES = frozenset({"7101"})
 GEPG_RETRY_INITIAL_SECONDS = env.int("GEPG_RETRY_INITIAL_SECONDS", default=60)
 GEPG_RETRY_MAX_SECONDS = env.int("GEPG_RETRY_MAX_SECONDS", default=1800)
 GEPG_RETRY_MAX_AGE_SECONDS = env.int("GEPG_RETRY_MAX_AGE_SECONDS", default=86400)
+GEPG_PENDING_ORDER_COPY_AFTER_SECONDS = env.int(
+    "GEPG_PENDING_ORDER_COPY_AFTER_SECONDS", default=600
+)
 
 # Control-number messages use the existing Beem account from the retired app.
 BEEM_AFRICA_API_KEY = env("BEEM_AFRICA_API_KEY", default="")

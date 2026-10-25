@@ -11,7 +11,7 @@ from apps.gems.serializers import StoneCategorySerializer, StoneTypeSerializer
 
 from .models import Customer, Order, StatusHistory, Stone
 from .selectors import order_stage
-from .services import next_stone_label
+from .services import next_stone_label, pending_order_copy_available_at
 
 
 class CustomerSerializer(AuditFieldsMixin):
@@ -175,6 +175,7 @@ class OrderSerializer(AuditFieldsMixin):
     control_number = serializers.SerializerMethodField()
     bill_total_amount = serializers.SerializerMethodField()
     bill_currency = serializers.SerializerMethodField()
+    copy_available_at = serializers.SerializerMethodField()
     # The label the next stone identified here will carry, so the identification
     # dialog can name it before it exists.
     next_stone_label = serializers.SerializerMethodField()
@@ -226,6 +227,7 @@ class OrderSerializer(AuditFieldsMixin):
             "control_number",
             "bill_total_amount",
             "bill_currency",
+            "copy_available_at",
             "stage",
             "stage_label",
             "hold_status",
@@ -271,7 +273,14 @@ class OrderSerializer(AuditFieldsMixin):
         exactly the case worth seeing from the orders list.
         """
         bill = getattr(obj, "bill", None)
-        return (bill.control_number or None) if bill is not None else None
+        if bill is None or bill.control_number in ("", "PENDING"):
+            return None
+        return bill.control_number
+
+    @extend_schema_field(serializers.DateTimeField(allow_null=True))
+    def get_copy_available_at(self, obj):
+        """When an unresolved submitted bill can be copied, if ever."""
+        return pending_order_copy_available_at(obj)
 
     def get_bill_total_amount(self, obj) -> str | None:
         """The amount charged on this order's bill, or None if it is unbilled."""
