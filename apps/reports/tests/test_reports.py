@@ -126,7 +126,7 @@ def test_bill_only_user_cannot_read_payment_totals_or_outstanding(api_client, us
     )
     export = api_client.get("/api/v1/reports/financial/export/", DATES)
     workbook = load_workbook(BytesIO(export.content))
-    assert workbook.sheetnames == ["Billing summary"]
+    assert workbook.sheetnames == ["Bills Issued"]
 
 
 def test_catalog_and_operational_sections_follow_individual_permissions(api_client, user):
@@ -433,7 +433,7 @@ def test_xlsx_exports_every_page_and_keeps_control_numbers_as_text(
     assert response.status_code == 200
     assert "attachment;" in response["Content-Disposition"]
     workbook = load_workbook(BytesIO(response.content))
-    sheet = workbook["Billing summary"]
+    sheet = workbook["Bills Issued"]
     assert sheet["A1"].value == "Date"
     assert sheet.max_row == 4
     assert "Matching records" not in {
