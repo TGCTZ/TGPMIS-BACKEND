@@ -13,7 +13,7 @@ REPORT_GATES = {
 SECTIONS = {
     "billing": {
         "report": "financial",
-        "title": "Billing summary",
+        "title": "Bills Issued",
         "description": (
             "Bills issued in the period. Statuses reflect their current state."
         ),
