@@ -50,9 +50,10 @@ class Command(BaseCommand):
                 # The legacy-system link is deliberately managed from the role
                 # matrix. Keep that choice when this command refreshes the
                 # code-defined baseline for a role.
-                if legacy_access and group.permissions.filter(
-                    pk=legacy_access.pk
-                ).exists():
+                if (
+                    legacy_access
+                    and group.permissions.filter(pk=legacy_access.pk).exists()
+                ):
                     permissions.append(legacy_access)
 
             group.permissions.set(permissions)
