@@ -27,4 +27,5 @@ class ModuleGate(models.Model):
             ("module_user", "Can access the user module"),
             ("module_settings", "Can access the settings module"),
             ("module_audit", "Can access the audit module"),
+            ("access_legacy_system", "Can access the legacy system"),
         ]
