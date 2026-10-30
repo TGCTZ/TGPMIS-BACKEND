@@ -25,6 +25,11 @@ class Command(BaseCommand):
     @transaction.atomic
     def handle(self, *args, **options):
         """Reconcile every declared role, reporting what changed."""
+        legacy_access = Permission.objects.filter(
+            content_type__app_label="core",
+            codename="access_legacy_system",
+        ).first()
+
         for role, labels in ROLE_PERMISSIONS.items():
             group, created = Group.objects.get_or_create(name=role)
 
@@ -41,6 +46,14 @@ class Command(BaseCommand):
                 )
             else:
                 permissions = self._resolve(labels)
+
+                # The legacy-system link is deliberately managed from the role
+                # matrix. Keep that choice when this command refreshes the
+                # code-defined baseline for a role.
+                if legacy_access and group.permissions.filter(
+                    pk=legacy_access.pk
+                ).exists():
+                    permissions.append(legacy_access)
 
             group.permissions.set(permissions)
             verb = "Created" if created else "Updated"
