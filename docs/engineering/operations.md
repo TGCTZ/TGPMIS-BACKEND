@@ -33,10 +33,10 @@ setting reads a variable that file does not mention.
 | `LOG_LEVEL` | `INFO` | For `logs/app.log`, which the System Logs screen reads. |
 | `JWT_ACCESS_MINUTES` | `60` | Access-token lifetime; logout or session inactivity can revoke access sooner. |
 | `JWT_REFRESH_DAYS` | `14` | How long a user stays signed in without re-entering a password. |
-| `FRONTEND_URL` | `http://localhost:5173` | The sign-in link in the new-account email. |
-| `EMAIL_URL` | `consolemail://` | Outgoing mail, e.g. `smtp+tls://user:password@host:587`. The default prints mail to the log instead of sending it. |
-| `DEFAULT_FROM_EMAIL` | `Tanzania Gemmological Centre <no-reply@tgc.go.tz>` | Sender of the new-account email. |
-| `CERTIFICATE_LAB_NAME` | `Tanzania Gemmological Centre` | Used in emails, the verify page, and the certificate's text header if the banner image is missing. |
+| `FRONTEND_URL` | `http://localhost:5173` | Configured frontend base URL; no current account-email flow uses it. |
+| `EMAIL_URL` | `consolemail://` | Django email backend configuration, e.g. `smtp+tls://user:password@host:587`. The current application does not send email; the default backend would write messages to the log if a mail call is added. |
+| `DEFAULT_FROM_EMAIL` | `Tanzania Gemmological Centre <no-reply@tgc.go.tz>` | Configured Django sender address. No current application mail flow uses it. |
+| `CERTIFICATE_LAB_NAME` | `Tanzania Gemmological Centre` | Used on the verify page and in the certificate's text header if the banner image is missing. |
 | `CERTIFICATE_LAB_ADDRESS` | empty | Printed on the certificate. |
 | `CERTIFICATE_MINISTRY_NAME` | `Ministry of Minerals` | The certificate's text header, if the banner image is missing. |
 | `CERTIFICATE_VERIFY_BASE_URL` | `http://localhost:8000` | Absolute base of the QR link on every certificate. Must be publicly reachable. |

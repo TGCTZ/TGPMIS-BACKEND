@@ -86,7 +86,8 @@ authenticated-route guard sends flagged users there, and a `first_login_required
 
 Add its URL name to `FIRST_LOGIN_ALLOWED`, with the narrowest set of methods that
 works, and add a case to `apps/users/tests/test_first_login.py`. Anything a new
-user can reach before finishing is reachable with only the emailed password.
+user can reach before finishing is reachable with only the temporary password
+shared by the account creator.
 
 ## Resetting a password
 

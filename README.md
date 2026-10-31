@@ -84,8 +84,9 @@ database with history instead:
 `uv run python manage.py seed --orders 150 --history-months 12`.
 
 Outside the demo data, accounts are created from the Users screen by an email and
-a role - there is no sign-up. New users get a temporary password by email and
-must set their own and complete their profile on first sign-in; see
+a role - there is no sign-up. The API returns a temporary password once to the
+creator, who shares it with the new user manually; that user must set their own
+password and complete their profile on first sign-in. See
 [Accounts and first login](docs/engineering/accounts.md).
 
 ## Everyday commands
@@ -162,7 +163,7 @@ how it is built.
 | [Certificates](docs/engineering/certificates.md) | Snapshots, the PDF, QR verification and report numbering |
 | [Reports](docs/engineering/reports.md) | Financial and operational sections, filters, and exports |
 | [Reference data](docs/domain/reference-data.md) | The lookup lists, and Tanzania's regions |
-| [Operations](docs/engineering/operations.md) | Configuration, email, and what to run after a deploy |
+| [Operations](docs/engineering/operations.md) | Configuration, runtime setup, and what to run after a deploy |
 | [Conventions](docs/engineering/conventions.md) | The numbered rules this project holds itself to |
 | [Adding an app](docs/engineering/adding-an-app.md) | The shape every domain app follows |
 | [Tech stack](docs/engineering/tech-stack.md) | Runtime components, project-specific choices, and engineering tools |
