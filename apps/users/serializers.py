@@ -308,16 +308,17 @@ class UserSerializer(AuditFieldsMixin):
 
 
 class MeSerializer(UserSerializer):
-    """The authenticated user's own record, plus their effective permissions."""
+    """The authenticated user's own record, including Django superuser status."""
 
     permissions = serializers.SerializerMethodField()
 
     class Meta(UserSerializer.Meta):
-        fields = (*UserSerializer.Meta.fields, "permissions")
+        fields = (*UserSerializer.Meta.fields, "is_superuser", "permissions")
         read_only_fields = (
             *UserSerializer.Meta.read_only_fields,
             "is_active",
             "is_staff",
+            "is_superuser",
             "roles",
         )
 
