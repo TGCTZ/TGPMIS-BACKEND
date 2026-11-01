@@ -2,6 +2,8 @@
 
 import pytest
 
+from apps.users.tests.factories import UserFactory
+
 pytestmark = pytest.mark.django_db
 
 
@@ -70,7 +72,27 @@ def test_me_returns_the_requesting_user(user, auth_client):
 
     assert response.status_code == 200
     assert response.data["email"] == user.email
+    assert response.data["is_superuser"] is False
     assert "permissions" in response.data
+
+
+def test_django_superuser_is_identified_without_an_assigned_role(api_client, auth_client):
+    """The client can display the top-level account without inventing a group."""
+    superuser = UserFactory(is_superuser=True)
+    assert not superuser.groups.exists()
+
+    response = auth_client(superuser).get("/api/v1/auth/me/")
+
+    assert response.status_code == 200
+    assert response.data["is_superuser"] is True
+    assert response.data["roles"] == []
+
+    login = api_client.post(
+        "/api/v1/auth/login/",
+        {"email": superuser.email, "password": "TestPass!2026"},
+    )
+    assert login.status_code == 200
+    assert login.data["user"]["is_superuser"] is True
 
 
 def test_logout_blacklists_the_refresh_token(api_client, user):
