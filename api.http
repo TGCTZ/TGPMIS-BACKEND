@@ -318,9 +318,18 @@ Content-Type: application/json
 
 { "conclusion": "Natural corundum, heat treated." }
 
+### Choose an eligible second gemmologist
+GET {{api}}/identification-reports/gemmologist-candidates/
+Authorization: Bearer {{access}}
+
+> {% client.global.set("secondGemmologistId", response.body[0].id); %}
+
 ### Finalize — needs identification.finalize_report
 POST {{api}}/identification-reports/{{reportId}}/finalize/
 Authorization: Bearer {{access}}
+Content-Type: application/json
+
+{ "verified_by": {{secondGemmologistId}} }
 
 ### The lock holds: this must return 400
 # @expect 400

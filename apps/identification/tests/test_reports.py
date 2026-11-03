@@ -27,7 +27,11 @@ from apps.gems.tests.factories import (
 from apps.identification.models import IdentificationReport, InstrumentUsed
 from apps.identification.selectors import findings_worklist
 from apps.identification.services import create_report, finalize_report, update_report
-from apps.identification.tests.factories import create_finalizable_report
+from apps.identification.tests.factories import (
+    create_finalizable_report,
+    finalize_complete_report,
+    second_gemmologist,
+)
 from apps.orders.serializers import StoneSerializer
 from apps.orders.services import add_stone
 from apps.orders.tests.factories import OrderFactory
@@ -110,10 +114,11 @@ def test_a_draft_report_can_be_edited(paid_stone, user):
 def test_finalizing_locks_the_report(paid_stone, user):
     """The lock is one-way and stamps who signed it off."""
     report = create_finalizable_report(paid_stone, user)
-    finalize_report(report, user=user)
+    finalize_complete_report(report, user)
 
     report.refresh_from_db()
     assert report.is_finalized
+    assert report.verified_by_id is not None
     assert report.identified_at is not None
     assert report.identified_by == user
 
@@ -125,7 +130,7 @@ def test_a_finalized_report_cannot_be_edited(paid_stone, user):
     finalization would make an issued certificate a claim about nothing.
     """
     report = create_finalizable_report(paid_stone, user)
-    finalize_report(report, user=user)
+    finalize_complete_report(report, user)
 
     with pytest.raises(ServiceError, match="finalized report cannot be edited"):
         update_report(report, conclusion="Actually, no.")
@@ -134,7 +139,7 @@ def test_a_finalized_report_cannot_be_edited(paid_stone, user):
 def test_a_report_cannot_be_finalized_twice(paid_stone, user):
     """There is no un-finalize, so a second call is a mistake worth reporting."""
     report = create_finalizable_report(paid_stone, user)
-    finalize_report(report, user=user)
+    finalize_complete_report(report, user)
 
     with pytest.raises(ServiceError, match="already finalized"):
         finalize_report(report, user=user)
@@ -148,7 +153,7 @@ def test_findings_worklist_holds_paid_unfinalized_stones(paid_stone, billed_ston
     report = create_finalizable_report(paid_stone, user)
     assert paid_stone in findings_worklist(), "a draft is still work in progress"
 
-    finalize_report(report, user=user)
+    finalize_complete_report(report, user)
     assert paid_stone not in findings_worklist()
 
 
@@ -211,7 +216,8 @@ def test_finalize_endpoint_issues_a_certificate_automatically(
     report = create_finalizable_report(paid_stone, None)
 
     response = auth_client(admin_user).post(
-        f"/api/v1/identification-reports/{report.pk}/finalize/"
+        f"/api/v1/identification-reports/{report.pk}/finalize/",
+        {"verified_by": second_gemmologist().pk},
     )
 
     assert response.status_code == 200, response.data
@@ -233,7 +239,8 @@ def test_finalize_endpoint_keeps_the_paid_bill_requirement(
     bill.save(update_fields=["status"])
 
     response = auth_client(admin_user).post(
-        f"/api/v1/identification-reports/{report.pk}/finalize/"
+        f"/api/v1/identification-reports/{report.pk}/finalize/",
+        {"verified_by": second_gemmologist().pk},
     )
 
     assert response.status_code == 400
@@ -247,7 +254,7 @@ def test_finalized_reports_are_listed_only_in_the_finalized_feed(
 ):
     """The normal findings queue stays focused on open work."""
     report = create_finalizable_report(paid_stone, admin_user)
-    finalize_report(report, user=admin_user)
+    finalize_complete_report(report, admin_user)
     client = auth_client(admin_user)
 
     open_work = client.get("/api/v1/identification-reports/workflow-feed/")
@@ -267,7 +274,10 @@ def test_patching_a_finalized_report_is_refused(paid_stone, admin_user, auth_cli
     """The lock holds over the API, not just in the service."""
     report = create_finalizable_report(paid_stone, None)
     client = auth_client(admin_user)
-    client.post(f"/api/v1/identification-reports/{report.pk}/finalize/")
+    client.post(
+        f"/api/v1/identification-reports/{report.pk}/finalize/",
+        {"verified_by": second_gemmologist().pk},
+    )
 
     response = client.patch(
         f"/api/v1/identification-reports/{report.pk}/",
@@ -377,7 +387,7 @@ def test_gemmologist_cannot_edit_a_finalized_report(
 ):
     """The bench can finalize findings but cannot rewrite their sign-off."""
     report = create_finalizable_report(paid_stone, gemmologist_user)
-    finalize_report(report, user=gemmologist_user)
+    finalize_complete_report(report, gemmologist_user)
 
     response = auth_client(gemmologist_user).patch(
         f"/api/v1/identification-reports/{report.pk}/",
@@ -387,6 +397,33 @@ def test_gemmologist_cannot_edit_a_finalized_report(
     assert response.status_code == 400
     report.refresh_from_db()
     assert report.conclusion == "Natural ruby."
+
+
+def test_legacy_finalized_report_allows_unrelated_correction(paid_stone, roles):
+    """A historical blank does not block corrections, but answers cannot be cleared."""
+    from django.contrib.auth.models import Group
+
+    from apps.users.tests.factories import UserFactory
+
+    admin = UserFactory()
+    admin.groups.add(Group.objects.get(name="admin"))
+    report = create_finalizable_report(paid_stone, admin)
+    finalize_complete_report(report, admin)
+    issue_certificate(paid_stone, user=admin)
+
+    IdentificationReport.objects.filter(pk=report.pk).update(nature_type="")
+    report.refresh_from_db()
+
+    update_report(report, user=admin, conclusion="Corrected finding.")
+    report.refresh_from_db()
+    assert report.conclusion == "Corrected finding."
+    assert report.nature_type == ""
+
+    with pytest.raises(ServiceError, match="transparency"):
+        update_report(report, user=admin, transparency="")
+
+    report.refresh_from_db()
+    assert report.transparency
 
 
 def test_failed_snapshot_refresh_rolls_back_a_correction(
@@ -400,7 +437,7 @@ def test_failed_snapshot_refresh_rolls_back_a_correction(
     admin = UserFactory()
     admin.groups.add(Group.objects.get(name="admin"))
     report = create_finalizable_report(paid_stone, admin)
-    finalize_report(report, user=admin)
+    finalize_complete_report(report, admin)
     issue_certificate(paid_stone, user=admin)
 
     def fail_refresh(*args, **kwargs):
@@ -452,7 +489,10 @@ def test_instruments_cannot_be_added_to_a_finalized_report(
     )
     assert first.status_code == 201, first.data
 
-    client.post(f"/api/v1/identification-reports/{report.pk}/finalize/")
+    client.post(
+        f"/api/v1/identification-reports/{report.pk}/finalize/",
+        {"verified_by": second_gemmologist().pk},
+    )
 
     second = client.post(
         "/api/v1/instruments-used/",
@@ -596,7 +636,7 @@ def test_finalize_allows_a_category_only_stone(settings, user):
     simulate_payment(generate_bill_for_order(order))
     report = create_finalizable_report(stone, user)
 
-    finalized = finalize_report(report, user=user)
+    finalized = finalize_complete_report(report, user)
 
     assert finalized.is_finalized
     assert stone.stone_type_id is None
@@ -610,7 +650,10 @@ def test_a_finalized_report_refuses_a_weight_change(paid_stone, admin_user, auth
     """
     report = create_finalizable_report(paid_stone, None, weight=Decimal("3.250"))
     client = auth_client(admin_user)
-    client.post(f"/api/v1/identification-reports/{report.pk}/finalize/")
+    client.post(
+        f"/api/v1/identification-reports/{report.pk}/finalize/",
+        {"verified_by": second_gemmologist().pk},
+    )
 
     response = client.patch(
         f"/api/v1/identification-reports/{report.pk}/", {"weight": "9.999"}
@@ -631,16 +674,91 @@ def test_finalize_needs_the_required_findings(paid_stone, user):
     report = create_report(stone=paid_stone, user=user)
 
     with pytest.raises(ServiceError) as refusal:
-        finalize_report(report, user=user)
+        finalize_report(report, user=user, verified_by=second_gemmologist())
 
     # Every missing field at once, not just the first: a gemmologist should not
     # have to discover them one failed click at a time.
     message = str(refusal.value)
-    for field in ("species", "colour", "weight", "comments"):
+    for field in (
+        "species",
+        "variety",
+        "colour",
+        "shape/cut",
+        "weight",
+        "transparency",
+        "optic character",
+        "nature",
+    ):
         assert field in message
 
     report.refresh_from_db()
     assert not report.is_finalized
+
+
+@pytest.mark.parametrize(
+    ("field", "blank", "label"),
+    [
+        ("species", None, "species"),
+        ("variety", None, "variety"),
+        ("color", None, "colour"),
+        ("shape_cut", None, "shape/cut"),
+        ("weight", None, "weight"),
+        ("transparency", "", "transparency"),
+        ("optic_character", "", "optic character"),
+        ("nature_type", "", "nature"),
+    ],
+)
+def test_finalize_refuses_each_missing_finding(paid_stone, user, field, blank, label):
+    """Every required finding independently prevents a certificate."""
+    report = create_finalizable_report(paid_stone, user, **{field: blank})
+
+    with pytest.raises(ServiceError, match=label):
+        finalize_report(report, user=user, verified_by=second_gemmologist())
+
+    report.refresh_from_db()
+    assert not report.is_finalized
+    assert not Certificate.objects.filter(stone=paid_stone).exists()
+
+
+def test_finalize_service_requires_second_gemmologist(paid_stone, user):
+    """Direct service callers cannot bypass the second signature."""
+    report = create_finalizable_report(paid_stone, user)
+
+    with pytest.raises(ServiceError, match="second gemmologist"):
+        finalize_report(report, user=user)
+
+    report.refresh_from_db()
+    assert not report.is_finalized
+    assert not Certificate.objects.filter(stone=paid_stone).exists()
+
+
+def test_finalize_service_keeps_signatories_distinct_without_actor(paid_stone, user):
+    """A direct caller cannot name the report's identifier as their own verifier."""
+    report = create_finalizable_report(paid_stone, user)
+
+    with pytest.raises(ServiceError, match="different person"):
+        finalize_report(report, verified_by=user)
+
+    report.refresh_from_db()
+    assert not report.is_finalized
+
+
+@pytest.mark.parametrize("payload", [{}, {"verified_by": None}])
+def test_finalize_endpoint_requires_second_gemmologist(
+    paid_stone, admin_user, auth_client, payload
+):
+    """Omitted and null second signatories are rejected before issuance."""
+    report = create_finalizable_report(paid_stone, admin_user)
+
+    response = auth_client(admin_user).post(
+        f"/api/v1/identification-reports/{report.pk}/finalize/", payload
+    )
+
+    assert response.status_code == 400
+    assert "verified_by" in response.data
+    report.refresh_from_db()
+    assert not report.is_finalized
+    assert not Certificate.objects.filter(stone=paid_stone).exists()
 
 
 def test_finalize_requires_a_stone_photograph(paid_stone, user):
@@ -649,26 +767,41 @@ def test_finalize_requires_a_stone_photograph(paid_stone, user):
     paid_stone.photo.delete(save=True)
 
     with pytest.raises(ServiceError, match="photograph"):
-        finalize_report(report, user=user)
+        finalize_report(report, user=user, verified_by=second_gemmologist())
 
     report.refresh_from_db()
     assert not report.is_finalized
 
 
 def test_finalize_names_only_what_is_still_missing(paid_stone, user):
-    """The three that are answered drop out of the message."""
-    report = create_finalizable_report(paid_stone, user, conclusion="")
+    """Answered fields drop out of the refusal message."""
+    report = create_finalizable_report(paid_stone, user, nature_type="")
 
-    with pytest.raises(ServiceError, match="comments") as refusal:
-        finalize_report(report, user=user)
+    with pytest.raises(ServiceError, match="nature") as refusal:
+        finalize_report(report, user=user, verified_by=second_gemmologist())
 
     assert "species" not in str(refusal.value)
+
+
+def test_finalize_and_issue_allow_blank_comments(paid_stone, admin_user, auth_client):
+    """Comments are optional even when finalization issues the certificate."""
+    report = create_finalizable_report(paid_stone, admin_user, conclusion="")
+
+    response = auth_client(admin_user).post(
+        f"/api/v1/identification-reports/{report.pk}/finalize/",
+        {"verified_by": second_gemmologist().pk},
+    )
+
+    assert response.status_code == 200, response.data
+    report.refresh_from_db()
+    assert report.is_finalized
+    assert Certificate.objects.get(stone=paid_stone).comments_snapshot == ""
 
 
 def test_a_complete_report_finalizes(paid_stone, user):
     """The rule is a gate, not a wall."""
     report = create_finalizable_report(paid_stone, user)
-    finalize_report(report, user=user)
+    finalize_complete_report(report, user)
 
     report.refresh_from_db()
     assert report.is_finalized
@@ -752,7 +885,7 @@ def test_a_discarded_report_is_not_findings(paid_stone, user):
     the stone out of the findings queue and push it into the certification one.
     """
     report = create_finalizable_report(paid_stone, user)
-    finalize_report(report, user=user)
+    finalize_complete_report(report, user)
     assert paid_stone not in findings_worklist()
 
     report.delete()

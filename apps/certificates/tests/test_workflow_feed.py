@@ -8,8 +8,10 @@ from apps.billing.dev import simulate_payment
 from apps.billing.services import generate_bill_for_order
 from apps.certificates.services import issue_certificate
 from apps.gems.tests.factories import StoneTypeFactory
-from apps.identification.services import finalize_report
-from apps.identification.tests.factories import create_finalizable_report
+from apps.identification.tests.factories import (
+    create_finalizable_report,
+    finalize_complete_report,
+)
 from apps.orders.services import add_stone
 from apps.orders.tests.factories import OrderFactory
 
@@ -22,7 +24,7 @@ def _ready_stone(settings, user):
     stone = add_stone(order, stone_type=StoneTypeFactory(price=Decimal("50000.00")))
     simulate_payment(generate_bill_for_order(order))
     report = create_finalizable_report(stone, user)
-    finalize_report(report, user=user)
+    finalize_complete_report(report, user)
     return stone
 
 

@@ -123,6 +123,9 @@ def update_report(
     if report.is_finalized and not can_edit_finalized:
         raise ServiceError("A finalized report cannot be edited.")
     _assert_payment_settled(report.stone)
+    # Older finalized reports may lack findings that became mandatory later.
+    # Corrections may leave those gaps alone, but may not remove another answer.
+    missing_before = set(_missing_for_finalize(report)) if can_edit_finalized else set()
     stone_fields = _pop_stone_fields(fields)
 
     for name, value in fields.items():
@@ -134,31 +137,31 @@ def update_report(
     if stone_fields:
         update_stone(report.stone, user=user, **stone_fields)
     if can_edit_finalized:
-        missing = _missing_for_finalize(report)
+        missing = set(_missing_for_finalize(report)) - missing_before
         if missing:
-            raise ServiceError(
-                "A finalized report must retain the {}.".format(", ".join(missing))
-            )
+            labels = ", ".join(sorted(missing))
+            raise ServiceError(f"A finalized report must retain the {labels}.")
         refresh_certificate_snapshot(report, user=user)
     return report
 
 
 #: What a report must answer before it can be locked, as ``(accessor, label)``.
 #:
-#: Deliberately short. The form stays permissive so a sitting at the bench can be
-#: saved half-done, which means this is the only place completeness is ever
-#: checked - and a certificate quotes these four: what the stone is, what it
-#: looks like, how big it is, and the verdict. Everything else is situational; a
-#: stone may legitimately defeat a test and still deserve a certificate.
+#: The form stays permissive so a sitting at the bench can be saved half-done.
+#: Completeness is checked when the report is finalized for certification.
 #:
 #: ``weight`` is read through the stone, not the report: the form collects it
 #: alongside the findings but ``_pop_stone_fields`` writes it to the stone, which
 #: is also where :func:`apps.certificates.services.issue_certificate` looks.
 FINALIZE_REQUIRED_FIELDS = (
     ("species", "species"),
+    ("variety", "variety"),
     ("color", "colour"),
+    ("shape_cut", "shape/cut"),
     ("stone.weight", "weight"),
-    ("conclusion", "comments"),
+    ("transparency", "transparency"),
+    ("optic_character", "optic character"),
+    ("nature_type", "nature"),
     ("stone.photo", "photograph"),
 )
 
@@ -170,9 +173,8 @@ def _missing_for_finalize(report: IdentificationReport) -> list[str]:
         value = report
         for part in accessor.split("."):
             value = getattr(value, part, None)
-        # A blank CharField is "" and an unset FK or decimal is None; both mean
-        # unanswered, so falsiness is the right test for all four.
-        if not value:
+        # Whitespace-only values are unanswered as well.
+        if not value or (isinstance(value, str) and not value.strip()):
             missing.append(label)
     return missing
 
@@ -186,11 +188,8 @@ def finalize_report(
     edit of the findings and existing certificate snapshot; it does not erase
     the original sign-off.
 
-    ``verified_by`` is the second signatory. Asked for here rather than while the
-    report is being written because it is a sign-off, not a finding - and this is
-    the moment the document stops being a draft. Optional at the service level so
-    a report can still be closed when only one gemmologist saw the stone; the
-    certificate then prints one name.
+    ``verified_by`` is the required second signatory. Asked for here rather than
+    while the report is being written because it is a sign-off, not a finding.
 
     Args:
         report: The report to lock.
@@ -211,16 +210,19 @@ def finalize_report(
     if missing:
         raise ServiceError("Record the {} before finalizing.".format(", ".join(missing)))
 
+    if verified_by is None:
+        raise ServiceError("Select a second gemmologist before finalizing.")
+
     # A second opinion from the same head is not a second opinion. Caught here
     # rather than in the serializer because it is the rule the document's own
     # "examined by at least two qualified Gemmologists" claim rests on.
-    if verified_by is not None and user is not None and verified_by.pk == user.pk:
+    first_gemmologist = user or report.identified_by
+    if first_gemmologist is not None and verified_by.pk == first_gemmologist.pk:
         raise ServiceError("The second gemmologist must be a different person.")
 
     report.is_finalized = True
     report.identified_at = timezone.now()
-    if verified_by is not None:
-        report.verified_by = verified_by
+    report.verified_by = verified_by
     if user is not None:
         report.identified_by = user
         report.updated_by = user

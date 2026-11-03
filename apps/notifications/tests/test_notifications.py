@@ -12,8 +12,10 @@ from apps.billing.dev import simulate_payment
 from apps.billing.services import generate_bill_for_order
 from apps.certificates.services import issue_certificate
 from apps.gems.tests.factories import StoneTypeFactory
-from apps.identification.services import finalize_report
-from apps.identification.tests.factories import create_finalizable_report
+from apps.identification.tests.factories import (
+    create_finalizable_report,
+    finalize_complete_report,
+)
 from apps.notifications.models import Notification, NotificationKind
 from apps.notifications.services import notify, notify_subscribers
 from apps.orders.services import add_stone, create_order, update_stone
@@ -200,7 +202,8 @@ def test_each_station_hears_when_the_order_reaches_it(
         stone.refresh_from_db()
         update_stone(stone, weight=Decimal("1.000"))
         with django_capture_on_commit_callbacks(execute=True):
-            finalize_report(create_finalizable_report(stone, finalizer), user=finalizer)
+            report = create_finalizable_report(stone, finalizer)
+            finalize_complete_report(report, finalizer)
     assert NotificationKind.READY_TO_CERTIFY not in _kinds_for(gemmologist_user)
 
     for stone in (first, second):

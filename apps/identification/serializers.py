@@ -221,14 +221,12 @@ class GemmologistCandidateSerializer(serializers.Serializer):
 class FinalizeReportSerializer(serializers.Serializer):
     """Payload for finalizing a report.
 
-    ``verified_by`` is the second gemmologist. Optional, because a report can
-    still be closed when only one person saw the stone - the certificate then
-    prints a single name rather than an empty second line.
+    ``verified_by`` identifies the required second gemmologist.
     """
 
     # Narrowed to the bench rather than every user: this field is what puts a
     # second name on a certificate that claims two qualified gemmologists saw
     # the stone, so the check belongs on the server, not in the dialog.
     verified_by = serializers.PrimaryKeyRelatedField(
-        queryset=gemmologist_candidates(), required=False, allow_null=True
+        queryset=gemmologist_candidates(), required=True, allow_null=False
     )

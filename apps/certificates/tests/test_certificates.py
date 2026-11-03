@@ -34,7 +34,10 @@ from apps.gems.tests.factories import (
 )
 from apps.identification.models import InstrumentUsed
 from apps.identification.services import create_report, finalize_report
-from apps.identification.tests.factories import create_finalizable_report
+from apps.identification.tests.factories import (
+    create_finalizable_report,
+    finalize_complete_report,
+)
 from apps.orders.models import StatusHistory, Stone
 from apps.orders.services import add_stone, update_stone
 from apps.orders.tests.factories import OrderFactory
@@ -68,7 +71,7 @@ def certifiable_stone(settings, user):
         color=ColorFactory(name="Red"),
         origin=OriginFactory(name="Tanzania"),
     )
-    finalize_report(report, user=user)
+    finalize_complete_report(report, user)
     return stone
 
 
@@ -197,7 +200,7 @@ def test_certification_needs_a_recorded_weight(settings, user):
     the rule it actually expresses.
     """
     stone = _paid_stone(settings, weight=None)
-    finalize_report(create_finalizable_report(stone, user), user=user)
+    finalize_complete_report(create_finalizable_report(stone, user), user)
     stone.refresh_from_db()
     Stone.objects.filter(pk=stone.pk).update(weight=None)
     stone.refresh_from_db()
@@ -210,7 +213,7 @@ def test_certification_requires_a_photograph(settings, user):
     """Legacy finalized reports still cannot issue without a photograph."""
     stone = _paid_stone(settings)
     report = create_finalizable_report(stone, user)
-    finalize_report(report, user=user)
+    finalize_complete_report(report, user)
     stone.photo.delete(save=True)
 
     with pytest.raises(ServiceError, match="no photograph"):
@@ -343,7 +346,7 @@ def test_certificate_freezes_every_finding_it_prints(settings, user):
     """
     stone = _paid_stone(settings)
     species = SpeciesFactory(name="Corundum")
-    variety = VarietyFactory(name="Ruby")
+    variety = VarietyFactory(name="Ruby", species=species)
     shape = ShapeCutFactory(name="Oval")
     report = create_finalizable_report(
         stone,
@@ -360,7 +363,7 @@ def test_certificate_freezes_every_finding_it_prints(settings, user):
         refractive_index="1.762-1.770",
         conclusion="Natural ruby, heated.",
     )
-    finalize_report(report, user=user)
+    finalize_complete_report(report, user)
 
     certificate = issue_certificate(stone, user=user)
 
@@ -419,7 +422,7 @@ def test_certificate_snapshots_the_instrument_checklist(settings, user):
     InstrumentFactory(name="Polariscope")
     retired = InstrumentFactory(name="Dichroscope", is_active=False)
     InstrumentUsed.objects.create(report=report, instrument=used)
-    finalize_report(report, user=user)
+    finalize_complete_report(report, user)
 
     certificate = issue_certificate(stone, user=user)
 
@@ -438,7 +441,7 @@ def test_legacy_instrument_snapshot_renders_as_ticked(settings, user):
     """Certificates issued before the checklist listed only instruments used."""
     stone = _paid_stone(settings)
     report = create_finalizable_report(stone, user)
-    finalize_report(report, user=user)
+    finalize_complete_report(report, user)
     certificate = issue_certificate(stone, user=user)
     certificate.instruments_snapshot = [{"name": "Refractometer", "reading": "1.76"}]
 
@@ -457,7 +460,7 @@ def test_certificate_context_carries_a_qr_and_the_lab_marks(settings, user):
     settings.CERTIFICATE_VERIFY_BASE_URL = "https://tgc.example"
     stone = _paid_stone(settings)
     report = create_finalizable_report(stone, user)
-    finalize_report(report, user=user)
+    finalize_complete_report(report, user)
     certificate = issue_certificate(stone, user=user)
 
     context = certificate_context(certificate)
@@ -524,7 +527,7 @@ def test_verify_page_says_so_when_a_certificate_is_revoked(settings, user, clien
     """The public verifier continues to identify legacy revoked records."""
     stone = _paid_stone(settings)
     report = create_finalizable_report(stone, user)
-    finalize_report(report, user=user)
+    finalize_complete_report(report, user)
     certificate = issue_certificate(stone, user=user)
     certificate.status = CertificateStatus.REVOKED
     certificate.save(update_fields=["status"])
