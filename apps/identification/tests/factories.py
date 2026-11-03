@@ -2,10 +2,31 @@
 
 from decimal import Decimal
 
+from django.contrib.auth.models import Group
 from django.core.files.uploadedfile import SimpleUploadedFile
 
-from apps.gems.tests.factories import ColorFactory, SpeciesFactory
-from apps.identification.services import create_report
+from apps.gems.enums import NatureType, OpticCharacter, Transparency
+from apps.gems.tests.factories import (
+    ColorFactory,
+    ShapeCutFactory,
+    SpeciesFactory,
+    VarietyFactory,
+)
+from apps.identification.services import create_report, finalize_report
+from apps.users.tests.factories import UserFactory
+
+
+def second_gemmologist():
+    """Create an active second signatory eligible for the finalize endpoint."""
+    account = UserFactory()
+    group, _ = Group.objects.get_or_create(name="gemmologist")
+    account.groups.add(group)
+    return account
+
+
+def finalize_complete_report(report, user):
+    """Finalize a complete report with an independent second signatory."""
+    return finalize_report(report, user=user, verified_by=second_gemmologist())
 
 
 def create_finalizable_report(stone, user, **overrides):
@@ -33,10 +54,16 @@ def create_finalizable_report(stone, user, **overrides):
             save=True,
         )
 
+    species = SpeciesFactory()
     fields = {
-        "species": SpeciesFactory(),
+        "species": species,
+        "variety": VarietyFactory(species=species),
         "color": ColorFactory(),
+        "shape_cut": ShapeCutFactory(),
         "weight": Decimal("2.500"),
+        "transparency": Transparency.TRANSPARENT,
+        "optic_character": OpticCharacter.DR,
+        "nature_type": NatureType.NATURAL,
         "conclusion": "Natural ruby.",
         **overrides,
     }

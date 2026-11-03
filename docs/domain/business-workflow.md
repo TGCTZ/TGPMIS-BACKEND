@@ -22,8 +22,10 @@ This describes the implemented workflow. API paths below are relative to
    stones move to `paid`. Findings services require a fully paid bill.
 5. **The bench records findings** against each stone: exact type, weight, lookup
    selections, measurements, comments, and instruments. Drafts may be incomplete.
-   Finalization requires species, exact type, colour, nonzero weight, and comments.
-   The finalize API accepts an optional second signatory from the active gemmologist list; when supplied, that person must differ from the finalizing user.
+   Finalization requires species, variety, colour, shape/cut, nonzero weight,
+   transparency, optic character, nature, and a photograph. Comments remain
+   optional. A distinct second signatory from the active gemmologist list is
+   also required.
 6. **Finalizing through the API also issues the certificate**, in one transaction.
    If issuance fails, finalization rolls back. The standalone certificate API
    remains available for a finalized, paid stone without a certificate.
