@@ -17,6 +17,7 @@ from apps.certificates.models import Certificate
 from apps.core.current_user import reset_current_user, set_current_user
 from apps.identification.models import IdentificationReport
 from apps.orders.tests.factories import OrderFactory, StoneFactory
+from apps.reports.exports import export_highlights
 
 pytestmark = pytest.mark.django_db
 LAB = ZoneInfo("Africa/Dar_es_Salaam")
@@ -37,6 +38,14 @@ def test_schema_documents_report_filters_and_binary_exports():
     ]["content"]
     assert "application/pdf" in content
     assert "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" in content
+    highlights_content = schema["paths"]["/api/v1/reports/financial/highlights/export/"][
+        "get"
+    ]["responses"]["200"]["content"]
+    assert "application/pdf" in highlights_content
+    assert (
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        in highlights_content
+    )
 
 
 def _at(day, hour=12):
@@ -435,13 +444,53 @@ def test_xlsx_exports_every_page_and_keeps_control_numbers_as_text(
     workbook = load_workbook(BytesIO(response.content))
     sheet = workbook["Bills Issued"]
     assert sheet["A1"].value == "Date"
-    assert sheet.max_row == 4
+    assert sheet.max_row == 5
+    assert sheet["A5"].value == "Total (TZS)"
+    assert sheet["F5"].value == 300
     assert "Matching records" not in {
         cell.value for row in sheet.iter_rows() for cell in row
     }
     matching = [cell for row in sheet for cell in row if cell.value in values]
     assert {cell.value for cell in matching} == set(values)
     assert all(cell.data_type == "s" for cell in matching)
+
+
+def test_full_report_totals_keep_currencies_and_outstanding_columns_separate(
+    api_client, admin_user
+):
+    """A total never combines currencies or omits paid and owed amounts."""
+    tzs_bill = _bill(currency="TZS")
+    _bill(currency="USD")
+    _payment(tzs_bill)
+    api_client.force_authenticate(admin_user)
+    response = api_client.get("/api/v1/reports/financial/export/", DATES)
+    assert response.status_code == 200
+    workbook = load_workbook(BytesIO(response.content))
+    billing_totals = {
+        row[0]: row
+        for row in workbook["Bills Issued"].values
+        if str(row[0]).startswith("Total (")
+    }
+    assert billing_totals["Total (TZS)"][4:6] == ("TZS", 100)
+    assert billing_totals["Total (USD)"][4:6] == ("USD", 100)
+    outstanding_totals = {
+        row[0]: row
+        for row in workbook["Outstanding bills"].values
+        if str(row[0]).startswith("Total (")
+    }
+    assert outstanding_totals["Total (TZS)"][5:8] == (100, 25, 75)
+    assert outstanding_totals["Total (USD)"][5:8] == (100, 0, 100)
+
+
+def test_full_orders_report_totals_submitted_stones(api_client, admin_user):
+    """The Orders section totals its numeric submitted-stones column."""
+    OrderFactory(received_date="2026-09-05", stone_count=7)
+    api_client.force_authenticate(admin_user)
+    response = api_client.get("/api/v1/reports/operational/export/", DATES)
+    assert response.status_code == 200
+    sheet = load_workbook(BytesIO(response.content))["Orders received"]
+    assert sheet.cell(sheet.max_row, 1).value == "Total submitted stones"
+    assert sheet.cell(sheet.max_row, 4).value == 7
 
 
 def test_pdf_has_a_valid_document_header(api_client, admin_user):
@@ -454,6 +503,87 @@ def test_pdf_has_a_valid_document_header(api_client, admin_user):
     assert response.status_code == 200
     assert response["Content-Type"] == "application/pdf"
     assert response.content.startswith(b"%PDF-")
+
+
+def test_highlights_xlsx_contains_only_authorized_summary_values(api_client, user):
+    """The highlights attachment has card totals, not detail rows or hidden sections."""
+    _grant(user, "core.module_reports", "core.report_financial", "billing.view_bill")
+    api_client.force_authenticate(user)
+    _bill()
+    response = api_client.get("/api/v1/reports/financial/highlights/export/", DATES)
+    assert response.status_code == 200
+    assert (
+        "financial-highlights-2026-09-01-2026-09-30.xlsx"
+        in response["Content-Disposition"]
+    )
+    workbook = load_workbook(BytesIO(response.content))
+    assert workbook.sheetnames == ["Highlights"]
+    values = list(workbook.active.values)
+    assert workbook.active.max_column == 2
+    assert ("Period", "2026-09-01 to 2026-09-30") in values
+    assert ("Bills Issued", None) in values
+    assert ("Count", 1) in values
+    assert ("Amount (TZS)", 100) in values
+    assert not any(row[0] == "Outstanding bills" for row in values)
+    assert not any("BILL-" in str(cell) for row in values for cell in row)
+
+
+def test_highlights_pdf_is_a_valid_download(api_client, admin_user):
+    """A summary PDF is a real document with the correct media type."""
+    _bill()
+    api_client.force_authenticate(admin_user)
+    response = api_client.get(
+        "/api/v1/reports/financial/highlights/export/",
+        DATES | {"file_type": "pdf"},
+    )
+    assert response.status_code == 200
+    assert response["Content-Type"] == "application/pdf"
+    assert response.content.startswith(b"%PDF-")
+
+
+def test_operational_highlights_keep_group_counts_and_amounts_clear():
+    """Category values stay separate, and hidden categories do not enter downloads."""
+    report = {
+        "title": "Operational reports",
+        "range": {"from": DATES["from_date"], "to": DATES["to_date"]},
+        "applied_filters": {},
+    }
+    summary = {
+        "title": "Stones registered",
+        "count": 3,
+        "amounts": [],
+        "statuses": [],
+        "categories": [
+            {
+                "name": "Precious",
+                "count": 2,
+                "amounts": [{"currency": "TZS", "amount": "120.25"}],
+            },
+            {"name": "TestCategory", "count": 1, "amounts": []},
+        ],
+        "varieties": [],
+        "missing_dates": 1,
+    }
+    content = export_highlights(
+        report, {"stones": {"summary": summary}}, file_type="xlsx"
+    )
+    values = list(load_workbook(BytesIO(content)).active.values)
+    assert ("Stone categories (count)", None) in values
+    assert ("Precious", 2) in values
+    assert ("Precious amount (TZS)", 120.25) in values
+    assert ("Records without an event date (excluded)", 1) in values
+    assert not any("TestCategory" in str(cell) for row in values for cell in row)
+
+
+def test_highlights_export_requires_report_permission(api_client, user):
+    """The direct download route enforces the same report gate as the page."""
+    api_client.force_authenticate(user)
+    assert (
+        api_client.get(
+            "/api/v1/reports/operational/highlights/export/", DATES
+        ).status_code
+        == 403
+    )
 
 
 def test_export_limit_rejects_instead_of_truncating(api_client, admin_user, monkeypatch):

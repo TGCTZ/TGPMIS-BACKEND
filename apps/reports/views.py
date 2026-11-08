@@ -13,7 +13,7 @@ from django.utils import timezone
 from apps.core.pagination import StandardPagination
 
 from .definitions import REPORT_TIMEZONE, REPORT_TITLES, allowed_sections, section_info
-from .exports import export_report
+from .exports import export_highlights, export_report
 from .permissions import CanReadReport
 from .selectors import report_columns, report_filters, report_rows, report_sections
 from .serializers import (
@@ -152,6 +152,38 @@ class ReportExportView(ReportView):
         response = HttpResponse(content, content_type=content_type)
         filename = (
             f"{self.kind}-reports-{report['range']['from']}-"
+            f"{report['range']['to']}.{file_type}"
+        )
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return response
+
+
+class ReportHighlightsExportView(ReportView):
+    """Download the same authorized totals as one highlights card group."""
+
+    @extend_schema(
+        parameters=[ReportQuerySerializer],
+        responses={
+            (200, "application/pdf"): OpenApiTypes.BINARY,
+            (
+                200,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            ): OpenApiTypes.BINARY,
+        },
+    )
+    def get(self, request):
+        """Render filtered summary values as an attachment."""
+        report, sections, _ = self.report_data(request)
+        file_type = request.query_params.get("file_type", "xlsx")
+        content = export_highlights(report, sections, file_type=file_type)
+        content_type = (
+            "application/pdf"
+            if file_type == "pdf"
+            else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        response = HttpResponse(content, content_type=content_type)
+        filename = (
+            f"{self.kind}-highlights-{report['range']['from']}-"
             f"{report['range']['to']}.{file_type}"
         )
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
