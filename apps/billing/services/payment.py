@@ -15,6 +15,7 @@ from apps.notifications.models import NotificationKind
 from apps.notifications.services import notify_subscribers
 from apps.orders.services import transition_stone
 
+from ..constants import CURRENCY_TZS
 from ..gateways.gepg import build_payment_ack, parse_payment_notification
 from ..models import Bill, BillItem, Payment
 
@@ -56,6 +57,8 @@ def _apply_payment(header: dict, txn: dict, raw: str) -> None:
     recomputing the settlement - otherwise a redelivery would re-transition
     every stone and write a second history entry each time.
     """
+    if txn["currency"] != CURRENCY_TZS:
+        raise ServiceError("Only TZS payments are supported.")
     bill = (
         Bill.all_objects.select_for_update()
         .filter(bill_number=txn["gepg_bill_id"])
@@ -66,6 +69,8 @@ def _apply_payment(header: dict, txn: dict, raw: str) -> None:
     )
     if bill is None:
         raise ServiceError(f"Bill '{txn['gepg_bill_id']}' not found.")
+    if bill.currency != CURRENCY_TZS:
+        raise ServiceError("Only TZS bills are supported.")
 
     # A notification can be in flight while an administrator deletes a bill.
     # Retain the payment and restore its context instead of orphaning a real

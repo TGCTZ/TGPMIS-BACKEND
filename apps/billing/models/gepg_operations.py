@@ -1,8 +1,11 @@
 """Auditable records for GePG cancellation and reconciliation workflows."""
 
 from django.db import models
+from django.db.models import Q
 
 from apps.core.models import BaseModel
+
+from ..constants import CURRENCY_TZS
 
 
 class BillCancellation(BaseModel):
@@ -63,7 +66,9 @@ class ReconciliationTransaction(BaseModel):
         max_digits=15, decimal_places=2, null=True, blank=True
     )
     bill_pay_opt = models.CharField(max_length=1, blank=True, default="")
-    currency = models.CharField(max_length=3, blank=True, default="")
+    currency = models.CharField(
+        max_length=3, choices=[(CURRENCY_TZS, CURRENCY_TZS)], default=CURRENCY_TZS
+    )
     coll_acc_num = models.CharField(max_length=50, blank=True, default="")
     trx_dt_tm = models.CharField(max_length=40, blank=True, default="")
     usd_pay_chnl = models.CharField(max_length=50, blank=True, default="")
@@ -76,3 +81,11 @@ class ReconciliationTransaction(BaseModel):
     rsv2 = models.CharField(max_length=255, blank=True, default="")
     rsv3 = models.CharField(max_length=255, blank=True, default="")
     raw_xml = models.TextField(blank=True, default="")
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(currency=CURRENCY_TZS),
+                name="billing_reconciliation_currency_tzs",
+            )
+        ]

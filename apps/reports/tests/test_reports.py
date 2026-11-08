@@ -17,6 +17,7 @@ from apps.certificates.models import Certificate
 from apps.core.current_user import reset_current_user, set_current_user
 from apps.identification.models import IdentificationReport
 from apps.orders.tests.factories import OrderFactory, StoneFactory
+from apps.reports.exports import export_highlights
 
 pytestmark = pytest.mark.django_db
 LAB = ZoneInfo("Africa/Dar_es_Salaam")
@@ -37,6 +38,14 @@ def test_schema_documents_report_filters_and_binary_exports():
     ]["content"]
     assert "application/pdf" in content
     assert "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" in content
+    highlights_content = schema["paths"]["/api/v1/reports/financial/highlights/export/"][
+        "get"
+    ]["responses"]["200"]["content"]
+    assert "application/pdf" in highlights_content
+    assert (
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        in highlights_content
+    )
 
 
 def _at(day, hour=12):
@@ -145,15 +154,13 @@ def test_catalog_and_operational_sections_follow_individual_permissions(api_clie
     )
 
 
-def test_totals_span_all_pages_and_currencies_without_multiplying_payments(
-    api_client, admin_user
-):
+def test_totals_span_all_pages_without_multiplying_payments(api_client, admin_user):
     """More detail rows or repeated relationships must not inflate money."""
     bill = _bill()
     StoneFactory.create_batch(3, order=bill.order)
     _payment(bill)
     _payment(bill)
-    other = _bill(currency="USD")
+    other = _bill()
     _payment(other, paid_amount=Decimal("10.00"))
     api_client.force_authenticate(admin_user)
     response = api_client.get(
@@ -161,13 +168,15 @@ def test_totals_span_all_pages_and_currencies_without_multiplying_payments(
     )
     assert response.status_code == 200
     assert response.data["count"] == 2
+    assert "currency" not in {column["key"] for column in response.data["columns"]}
+    assert "Amount (TZS)" in {column["label"] for column in response.data["columns"]}
     assert len(response.data["results"]) == 1
     assert _summary(response, "billing")["count"] == 2
     amounts = {
         item["currency"]: Decimal(item["amount"])
         for item in _summary(response, "outstanding")["amounts"]
     }
-    assert amounts == {"TZS": Decimal("50"), "USD": Decimal("90")}
+    assert amounts == {"TZS": Decimal("140")}
 
 
 def test_outstanding_filters_issue_date_but_uses_payments_received_later(
@@ -251,16 +260,14 @@ def test_operational_events_use_independent_dates_and_distinct_orders(
     assert response.data["results"][0]["stones"] == 7
 
 
-def test_grouped_stone_and_variety_totals_sum_bill_lines_by_currency(
-    api_client, admin_user
-):
-    """Grouped amounts reflect billed lines and never combine currencies."""
+def test_grouped_stone_and_variety_totals_sum_bill_lines_in_tzs(api_client, admin_user):
+    """Grouped amounts combine billed lines in the system's single currency."""
     first = StoneFactory()
     second = StoneFactory(stone_category=first.stone_category)
     type(first).objects.filter(pk__in=[first.pk, second.pk]).update(created_at=_at(8))
     bills = [
         _bill(order=first.order, currency="TZS"),
-        _bill(order=second.order, currency="USD"),
+        _bill(order=second.order),
     ]
     for stone, bill, amount in zip(
         (first, second), bills, (Decimal("120.00"), Decimal("45.00")), strict=True
@@ -298,10 +305,7 @@ def test_grouped_stone_and_variety_totals_sum_bill_lines_by_currency(
         if row["name"] == first.stone_category.name
     )
     assert category["count"] == 2
-    assert category["amounts"] == [
-        {"currency": "TZS", "amount": "120.00"},
-        {"currency": "USD", "amount": "45.00"},
-    ]
+    assert category["amounts"] == [{"currency": "TZS", "amount": "165.00"}]
 
     response = api_client.get(
         "/api/v1/reports/operational/", DATES | {"section": "certificates"}
@@ -434,14 +438,81 @@ def test_xlsx_exports_every_page_and_keeps_control_numbers_as_text(
     assert "attachment;" in response["Content-Disposition"]
     workbook = load_workbook(BytesIO(response.content))
     sheet = workbook["Bills Issued"]
-    assert sheet["A1"].value == "Date"
-    assert sheet.max_row == 4
+    assert sheet["A1"].value == "Financial Reports: Bills Issued"
+    assert sheet["A2"].value == "Date range: 2026-09-01 to 2026-09-30"
+    assert sheet["A4"].value == "Date"
+    assert sheet.freeze_panes == "A5"
+    assert sheet["A4"].border.right.style == "thin"
+    assert sheet["A5"].border.right.style == "thin"
+    assert "Currency" not in [cell.value for cell in sheet[4]]
+    assert "Amount (TZS)" in [cell.value for cell in sheet[4]]
+    assert sheet.max_row == 8
+    assert sheet["A8"].value == "Total (TZS)"
+    assert sheet["E8"].value == 300
     assert "Matching records" not in {
         cell.value for row in sheet.iter_rows() for cell in row
     }
     matching = [cell for row in sheet for cell in row if cell.value in values]
     assert {cell.value for cell in matching} == set(values)
     assert all(cell.data_type == "s" for cell in matching)
+
+
+def test_full_report_totals_include_all_outstanding_amount_columns(
+    api_client, admin_user
+):
+    """The TZS footer sums bill amounts, paid amounts and current balances."""
+    tzs_bill = _bill(currency="TZS")
+    _bill()
+    _payment(tzs_bill)
+    api_client.force_authenticate(admin_user)
+    response = api_client.get("/api/v1/reports/financial/export/", DATES)
+    assert response.status_code == 200
+    workbook = load_workbook(BytesIO(response.content))
+    billing_totals = {
+        row[0]: row
+        for row in workbook["Bills Issued"].values
+        if str(row[0]).startswith("Total (")
+    }
+    assert billing_totals["Total (TZS)"][4] == 200
+    assert len(billing_totals) == 1
+    outstanding_totals = {
+        row[0]: row
+        for row in workbook["Outstanding bills"].values
+        if str(row[0]).startswith("Total (")
+    }
+    assert outstanding_totals["Total (TZS)"][4:7] == (200, 25, 175)
+    assert len(outstanding_totals) == 1
+
+
+def test_full_orders_report_totals_submitted_stones(api_client, admin_user):
+    """Each operational section has a count; orders also sum submitted stones."""
+    order = OrderFactory(received_date="2026-09-05", stone_count=7)
+    stone = StoneFactory(order=order)
+    type(stone).objects.filter(pk=stone.pk).update(created_at=_at(8))
+    findings = IdentificationReport.objects.create(
+        stone=stone, report_number="TOTAL-RPT-1", is_finalized=True
+    )
+    Certificate.objects.create(
+        stone=stone,
+        report=findings,
+        certificate_number="TOTAL-CERT-1",
+        weight_snapshot=Decimal("1"),
+        stone_type_snapshot=stone.stone_type.name,
+        issued_at=_at(10),
+    )
+    api_client.force_authenticate(admin_user)
+    response = api_client.get("/api/v1/reports/operational/export/", DATES)
+    assert response.status_code == 200
+    workbook = load_workbook(BytesIO(response.content))
+    orders = workbook["Orders received"]
+    assert orders["A1"].value == "Operational Reports: Orders received"
+    assert orders["A2"].value == "Date range: 2026-09-01 to 2026-09-30"
+    assert orders.cell(orders.max_row, 1).value == "Total orders: 1"
+    assert orders.cell(orders.max_row, 4).value == 7
+    stones = workbook["Stones registered"]
+    assert stones.cell(stones.max_row, 1).value == "Total stones: 1"
+    certificates = workbook["Certificates issued"]
+    assert certificates.cell(certificates.max_row, 1).value == "Total certificates: 1"
 
 
 def test_pdf_has_a_valid_document_header(api_client, admin_user):
@@ -454,6 +525,105 @@ def test_pdf_has_a_valid_document_header(api_client, admin_user):
     assert response.status_code == 200
     assert response["Content-Type"] == "application/pdf"
     assert response.content.startswith(b"%PDF-")
+
+
+def test_highlights_xlsx_contains_only_authorized_summary_values(api_client, user):
+    """The highlights attachment has card totals, not detail rows or hidden sections."""
+    _grant(user, "core.module_reports", "core.report_financial", "billing.view_bill")
+    api_client.force_authenticate(user)
+    _bill()
+    response = api_client.get("/api/v1/reports/financial/highlights/export/", DATES)
+    assert response.status_code == 200
+    assert (
+        "financial-highlights-2026-09-01-2026-09-30.xlsx"
+        in response["Content-Disposition"]
+    )
+    workbook = load_workbook(BytesIO(response.content))
+    assert workbook.sheetnames == ["Highlights"]
+    values = list(workbook.active.values)
+    assert workbook.active.max_column == 2
+    assert ("Date range", "2026-09-01 to 2026-09-30") in values
+    assert ("Bills Issued", None) in values
+    assert ("Count", 1) in values
+    assert ("Amount (TZS)", 100) in values
+    assert not any(row[0] == "Outstanding bills" for row in values)
+    assert not any("BILL-" in str(cell) for row in values for cell in row)
+
+
+def test_highlights_pdf_is_a_valid_download(api_client, admin_user):
+    """A summary PDF is a real document with the correct media type."""
+    _bill()
+    api_client.force_authenticate(admin_user)
+    response = api_client.get(
+        "/api/v1/reports/financial/highlights/export/",
+        DATES | {"file_type": "pdf"},
+    )
+    assert response.status_code == 200
+    assert response["Content-Type"] == "application/pdf"
+    assert response.content.startswith(b"%PDF-")
+
+
+def test_operational_highlights_show_group_counts_and_amounts_in_tables():
+    """Category and variety rows align names, counts and TZS amounts."""
+    report = {
+        "title": "Operational reports",
+        "range": {"from": DATES["from_date"], "to": DATES["to_date"]},
+        "applied_filters": {},
+    }
+    summary = {
+        "title": "Stones registered",
+        "count": 3,
+        "amounts": [],
+        "statuses": [],
+        "categories": [
+            {
+                "name": "Precious",
+                "count": 2,
+                "amounts": [{"currency": "TZS", "amount": "120.25"}],
+            },
+            {"name": "TestCategory", "count": 1, "amounts": []},
+        ],
+        "varieties": [
+            {
+                "name": "Ruby",
+                "count": 2,
+                "amounts": [{"currency": "TZS", "amount": "120.25"}],
+            }
+        ],
+        "missing_dates": 1,
+    }
+    content = export_highlights(
+        report, {"stones": {"summary": summary}}, file_type="xlsx"
+    )
+    sheet = load_workbook(BytesIO(content)).active
+    values = list(sheet.values)
+    assert sheet.max_column == 3
+    assert ("Stone category", "Count", "Amount (TZS)") in values
+    assert ("Precious", 2, 120.25) in values
+    assert ("Variety", "Count", "Amount (TZS)") in values
+    assert ("Ruby", 2, 120.25) in values
+    category_row = next(
+        index for index, row in enumerate(values, 1) if row[0] == "Stone category"
+    )
+    assert sheet.cell(category_row, 1).border.right.style == "thin"
+    assert sheet.cell(category_row + 1, 2).border.right.style == "thin"
+    assert sheet.cell(category_row, 2).alignment.horizontal == "center"
+    assert sheet.cell(category_row + 1, 2).alignment.horizontal == "center"
+    count_row = next(index for index, row in enumerate(values, 1) if row[0] == "Count")
+    assert sheet.cell(count_row, 2).alignment.horizontal == "center"
+    assert ("Records without an event date (excluded)", 1, None) in values
+    assert not any("TestCategory" in str(cell) for row in values for cell in row)
+
+
+def test_highlights_export_requires_report_permission(api_client, user):
+    """The direct download route enforces the same report gate as the page."""
+    api_client.force_authenticate(user)
+    assert (
+        api_client.get(
+            "/api/v1/reports/operational/highlights/export/", DATES
+        ).status_code
+        == 403
+    )
 
 
 def test_export_limit_rejects_instead_of_truncating(api_client, admin_user, monkeypatch):

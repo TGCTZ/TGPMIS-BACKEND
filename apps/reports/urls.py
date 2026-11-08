@@ -2,7 +2,12 @@
 
 from django.urls import path
 
-from .views import ReportCatalogView, ReportExportView, ReportView
+from .views import (
+    ReportCatalogView,
+    ReportExportView,
+    ReportHighlightsExportView,
+    ReportView,
+)
 
 urlpatterns = [
     path("reports/", ReportCatalogView.as_view(), name="report-catalog"),
@@ -25,5 +30,15 @@ urlpatterns = [
         "reports/operational/export/",
         ReportExportView.as_view(kind="operational"),
         name="operational-report-export",
+    ),
+    path(
+        "reports/financial/highlights/export/",
+        ReportHighlightsExportView.as_view(kind="financial"),
+        name="financial-highlights-export",
+    ),
+    path(
+        "reports/operational/highlights/export/",
+        ReportHighlightsExportView.as_view(kind="operational"),
+        name="operational-highlights-export",
     ),
 ]

@@ -20,6 +20,7 @@ from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
+from ..constants import CURRENCY_TZS
 from ..gepg_transport import finish_gepg_request, send_gepg_request
 from ..models import GePGRequest
 from .signing import sign_if_enabled
@@ -347,6 +348,9 @@ def parse_payment_detail(detail) -> dict:
     )
     if any(not detail.findtext(name) for name in required):
         raise ValueError("Payment transaction is missing a required field")
+    currency = detail.findtext("Ccy", "")
+    if currency != CURRENCY_TZS:
+        raise ValueError(f"Unsupported payment currency: {currency}")
     return {
         "cust_cntr_num": detail.findtext("CustCntrNum", ""),
         "sp_code": detail.findtext("SpCode", ""),
@@ -359,7 +363,7 @@ def parse_payment_detail(detail) -> dict:
         "bill_amount": Decimal(detail.findtext("BillAmt", "0")),
         "paid_amount": Decimal(detail.findtext("PaidAmt", "0")),
         "bill_pay_opt": detail.findtext("BillPayOpt", ""),
-        "currency": detail.findtext("Ccy", ""),
+        "currency": currency,
         "coll_acc_num": detail.findtext("CollAccNum", ""),
         "trx_dt_tm": parse_datetime(detail.findtext("TrxDtTm", "")),
         "usd_pay_chnl": detail.findtext("UsdPayChnl", ""),
