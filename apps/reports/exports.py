@@ -13,12 +13,215 @@ from reportlab.lib import colors
 from reportlab.lib.enums import TA_RIGHT
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-from reportlab.platypus import LongTable, Paragraph, SimpleDocTemplate, Spacer, TableStyle
+from reportlab.lib.utils import ImageReader
+from reportlab.pdfbase import pdfmetrics
+from reportlab.platypus import (
+    BaseDocTemplate,
+    Frame,
+    LongTable,
+    PageTemplate,
+    Paragraph,
+    Spacer,
+    TableStyle,
+)
 
+from django.conf import settings
+from django.utils import timezone
+
+from apps.certificates.services.assets import ASSET_DIR, ASSETS
 from apps.core.exceptions import ServiceError
 
-from .definitions import EXPORT_ROW_LIMIT
+from .definitions import EXPORT_ROW_LIMIT, REPORT_TIMEZONE
 from .selectors import report_columns, report_rows
+
+PDF_BLUE = colors.HexColor("#0152a9")
+PDF_NAVY = colors.HexColor("#000080")
+PDF_GOLD = colors.HexColor("#e4a41e")
+PDF_MUTED = colors.HexColor("#475569")
+
+
+def _draw_pdf_mark(pdf_canvas, name, x, y, width, height):
+    """Fit a certificate mark into its report-header box without distortion."""
+    path = ASSET_DIR / ASSETS[name]
+    if not path.is_file():
+        return
+    image = ImageReader(str(path))
+    image_width, image_height = image.getSize()
+    scale = min(width / image_width, height / image_height)
+    drawn_width, drawn_height = image_width * scale, image_height * scale
+    pdf_canvas.drawImage(
+        image,
+        x + (width - drawn_width) / 2,
+        y + (height - drawn_height) / 2,
+        width=drawn_width,
+        height=drawn_height,
+        mask="auto",
+    )
+
+
+def _draw_centered_header_line(pdf_canvas, value, y, font, size, max_width, color):
+    """Shrink long configured institution names to stay between the two marks."""
+    while pdfmetrics.stringWidth(value, font, size) > max_width and size > 8:
+        size -= 0.5
+    pdf_canvas.setFillColor(color)
+    pdf_canvas.setFont(font, size)
+    pdf_canvas.drawCentredString(landscape(A4)[0] / 2, y, value)
+
+
+def _draw_report_pdf_page(pdf_canvas, document, report, title):
+    """Show the certificate-inspired masthead once and paginate the report."""
+    pdf_canvas.saveState()
+    if document.page != 1:
+        _draw_report_pdf_footer(pdf_canvas, document, report)
+        pdf_canvas.restoreState()
+        return
+    page_width, page_height = landscape(A4)
+    left, right = document.leftMargin, page_width - document.rightMargin
+    _draw_pdf_mark(pdf_canvas, "coat_of_arms", left + 3, page_height - 101, 58, 70)
+    _draw_pdf_mark(pdf_canvas, "tgc_logo", right - 61, page_height - 101, 58, 70)
+    text_width = right - left - 150
+    _draw_centered_header_line(
+        pdf_canvas,
+        "United Republic of Tanzania",
+        page_height - 34,
+        "Helvetica-Bold",
+        11,
+        text_width,
+        PDF_NAVY,
+    )
+    _draw_centered_header_line(
+        pdf_canvas,
+        settings.CERTIFICATE_MINISTRY_NAME,
+        page_height - 50,
+        "Helvetica-Bold",
+        12,
+        text_width,
+        PDF_NAVY,
+    )
+    _draw_centered_header_line(
+        pdf_canvas,
+        settings.CERTIFICATE_LAB_NAME,
+        page_height - 69,
+        "Helvetica-Bold",
+        14,
+        text_width,
+        PDF_BLUE,
+    )
+    _draw_centered_header_line(
+        pdf_canvas,
+        title,
+        page_height - 94,
+        "Helvetica-Bold",
+        15,
+        text_width,
+        PDF_NAVY,
+    )
+    pdf_canvas.setStrokeColor(PDF_GOLD)
+    pdf_canvas.setLineWidth(2)
+    pdf_canvas.line(left, page_height - 104, right, page_height - 104)
+
+    band_y = page_height - 164
+    pdf_canvas.setFillColor(colors.HexColor("#f1f5f9"))
+    pdf_canvas.roundRect(left, band_y, right - left, 54, 4, stroke=0, fill=1)
+    pdf_canvas.setFillColor(PDF_NAVY)
+    pdf_canvas.setFont("Helvetica-Bold", 9)
+    pdf_canvas.drawString(left + 10, band_y + 38, "DATE RANGE")
+    pdf_canvas.setFont("Helvetica", 10)
+    pdf_canvas.drawString(
+        left + 95,
+        band_y + 37,
+        f"{report['range']['from']} to {report['range']['to']}",
+    )
+    filter_text = (
+        ", ".join(
+            f"{label}: {value}" for label, value in report["applied_filters"].items()
+        )
+        or "All records"
+    )
+    filters = Paragraph(
+        f"<b>FILTERS</b> &nbsp;&nbsp; {escape(filter_text)}",
+        ParagraphStyle(
+            "ReportHeaderFilters",
+            fontName="Helvetica",
+            fontSize=8,
+            leading=10,
+            textColor=PDF_MUTED,
+        ),
+    )
+    filters.wrap(right - left - 20, 25)
+    filters.drawOn(pdf_canvas, left + 10, band_y + 5)
+
+    _draw_report_pdf_footer(pdf_canvas, document, report)
+    pdf_canvas.restoreState()
+
+
+def _draw_report_pdf_footer(pdf_canvas, document, report):
+    """Keep generation details and page numbers on every page."""
+    page_width, _ = landscape(A4)
+    left, right = document.leftMargin, page_width - document.rightMargin
+    pdf_canvas.setStrokeColor(colors.HexColor("#cbd5e1"))
+    pdf_canvas.setLineWidth(0.5)
+    pdf_canvas.line(left, 33, right, 33)
+    pdf_canvas.setFillColor(PDF_MUTED)
+    pdf_canvas.setFont("Helvetica", 8)
+    generated_at = report.get("generated_at")
+    if generated_at:
+        generated = timezone.localtime(generated_at, REPORT_TIMEZONE).strftime(
+            "%Y-%m-%d %H:%M"
+        )
+        pdf_canvas.drawString(left, 21, f"Generated {generated} EAT")
+    else:
+        pdf_canvas.drawString(left, 21, settings.CERTIFICATE_LAB_NAME)
+    pdf_canvas.drawRightString(right, 21, f"Page {document.page}")
+
+
+def _report_pdf_document(output, report, title, *, side_margin):
+    """Use a tall first-page header and a compact frame on later pages."""
+    page_width, page_height = landscape(A4)
+    document = BaseDocTemplate(
+        output,
+        pagesize=(page_width, page_height),
+        leftMargin=side_margin,
+        rightMargin=side_margin,
+        topMargin=181,
+        bottomMargin=45,
+    )
+
+    def decorate(pdf_canvas, doc):
+        _draw_report_pdf_page(pdf_canvas, doc, report, title)
+
+    first_frame = Frame(
+        side_margin,
+        document.bottomMargin,
+        document.width,
+        document.height,
+        leftPadding=0,
+        rightPadding=0,
+        topPadding=0,
+        bottomPadding=0,
+    )
+    later_frame = Frame(
+        side_margin,
+        document.bottomMargin,
+        document.width,
+        page_height - 40 - document.bottomMargin,
+        leftPadding=0,
+        rightPadding=0,
+        topPadding=0,
+        bottomPadding=0,
+    )
+    document.addPageTemplates(
+        [
+            PageTemplate(
+                id="First",
+                frames=[first_frame],
+                onPage=decorate,
+                autoNextPageTemplate="Later",
+            ),
+            PageTemplate(id="Later", frames=[later_frame], onPage=decorate),
+        ]
+    )
+    return document
 
 
 def _highlight_sections(sections):
@@ -69,8 +272,10 @@ def _highlight_xlsx(report, sections):
     sheet.title = "Highlights"
     sheet.append([report["title"] + " highlights"])
     sheet.merge_cells("A1:B1")
-    sheet["A1"].font = Font(size=16, bold=True)
-    sheet.append(["Period", f"{report['range']['from']} to {report['range']['to']}"])
+    sheet["A1"].font = Font(size=16, bold=True, color="24466A")
+    sheet.row_dimensions[1].height = 25
+    sheet.append(["Date range", f"{report['range']['from']} to {report['range']['to']}"])
+    sheet["A2"].font = Font(bold=True)
     for label, value in report["applied_filters"].items():
         sheet.append([label, value])
     sheet.append([""])
@@ -107,13 +312,8 @@ def _highlight_xlsx(report, sections):
 
 def _highlight_pdf(report, sections):
     output = BytesIO()
-    document = SimpleDocTemplate(
-        output,
-        pagesize=landscape(A4),
-        leftMargin=40,
-        rightMargin=40,
-        topMargin=36,
-        bottomMargin=36,
+    document = _report_pdf_document(
+        output, report, report["title"].title() + " Highlights", side_margin=40
     )
     styles = getSampleStyleSheet()
     value_style = ParagraphStyle(
@@ -122,19 +322,7 @@ def _highlight_pdf(report, sections):
     heading_style = ParagraphStyle(
         "HighlightSection", parent=styles["BodyText"], fontName="Helvetica-Bold"
     )
-    story = [
-        Paragraph(escape(report["title"] + " highlights"), styles["Title"]),
-        Paragraph(
-            f"Period: {escape(report['range']['from'])} to "
-            f"{escape(report['range']['to'])}",
-            styles["Normal"],
-        ),
-    ]
-    for label, value in report["applied_filters"].items():
-        story.append(
-            Paragraph(f"{escape(label)}: {escape(str(value))}", styles["Normal"])
-        )
-    story.append(Spacer(1, 12))
+    story = []
     for title, rows in _highlight_sections(sections):
         data = [[Paragraph(escape(title), heading_style), ""]]
         for label, value in rows:
@@ -201,22 +389,43 @@ def _add_detail_totals(key, columns, totals, row):
             bucket[field] = bucket.get(field, Decimal(0)) + Decimal(row[field])
 
 
-def _detail_total_rows(key, totals):
-    """Keep currencies separate, including the three outstanding-bill amounts."""
-    if key == "orders" and "stones" in totals:
-        yield {"event_date": "Total submitted stones", "stones": totals["stones"]}
-    elif key != "orders":
+def _detail_total_rows(key, totals, count):
+    """Show operational counts and keep financial amounts in TZS."""
+    operational_names = {
+        "orders": "orders",
+        "stones": "stones",
+        "certificates": "certificates",
+    }
+    if key in operational_names:
+        row = {"event_date": f"Total {operational_names[key]}: {count}"}
+        if key == "orders":
+            row["stones"] = totals.get("stones", 0)
+        yield row
+    else:
         for currency, amounts in sorted(totals.items()):
             yield {"event_date": f"Total ({currency})", "currency": currency, **amounts}
 
 
-def _xlsx(sections):
+def _xlsx(report, sections):
     workbook = Workbook(write_only=True)
     for key, section in sections.items():
         summary = section["summary"]
         sheet = workbook.create_sheet(summary["title"][:31])
         columns = report_columns(key)
-        sheet.freeze_panes = "A2"
+        sheet.freeze_panes = "A5"
+        sheet.row_dimensions[1].height = 25
+        title = WriteOnlyCell(
+            sheet, value=f"{report['title'].title()}: {summary['title']}"
+        )
+        title.font = Font(size=15, bold=True, color="24466A")
+        sheet.append([title])
+        date_range = WriteOnlyCell(
+            sheet,
+            value=f"Date range: {report['range']['from']} to {report['range']['to']}",
+        )
+        date_range.font = Font(size=10, color="475569")
+        sheet.append([date_range])
+        sheet.append([])
         widths = [
             40
             if column["key"] == "customer"
@@ -234,7 +443,7 @@ def _xlsx(sections):
         totals = {}
         for row_number, row in enumerate(
             report_rows(key, section["queryset"].iterator(chunk_size=500)),
-            2,
+            5,
         ):
             _add_detail_totals(key, columns, totals, row)
             sheet.row_dimensions[row_number].height = 15 * max(
@@ -253,7 +462,7 @@ def _xlsx(sections):
                     cell.data_type = "s"
                 cells.append(cell)
             sheet.append(cells)
-        for total in _detail_total_rows(key, totals):
+        for total in _detail_total_rows(key, totals, summary["count"]):
             cells = []
             for column in columns:
                 value = total.get(column["key"], "")
@@ -273,15 +482,10 @@ def _xlsx(sections):
     return output.getvalue()
 
 
-def _pdf(sections):
+def _pdf(report, sections):
     output = BytesIO()
-    document = SimpleDocTemplate(
-        output,
-        pagesize=landscape(A4),
-        leftMargin=28,
-        rightMargin=28,
-        topMargin=28,
-        bottomMargin=28,
+    document = _report_pdf_document(
+        output, report, report["title"].title(), side_margin=28
     )
     styles = getSampleStyleSheet()
     styles["BodyText"].fontSize = 8
@@ -322,7 +526,7 @@ def _pdf(sections):
                 ]
             )
         total_start = len(data)
-        for total in _detail_total_rows(key, totals):
+        for total in _detail_total_rows(key, totals, summary["count"]):
             data.append(
                 [
                     Paragraph(
@@ -384,4 +588,4 @@ def export_report(report: dict, sections: dict, *, file_type: str) -> bytes:
         raise ServiceError(
             f"Exports allow at most {EXPORT_ROW_LIMIT:,} rows. Narrow the report filters."
         )
-    return _xlsx(sections) if file_type == "xlsx" else _pdf(sections)
+    return _xlsx(report, sections) if file_type == "xlsx" else _pdf(report, sections)

@@ -438,12 +438,15 @@ def test_xlsx_exports_every_page_and_keeps_control_numbers_as_text(
     assert "attachment;" in response["Content-Disposition"]
     workbook = load_workbook(BytesIO(response.content))
     sheet = workbook["Bills Issued"]
-    assert sheet["A1"].value == "Date"
-    assert "Currency" not in [cell.value for cell in sheet[1]]
-    assert "Amount (TZS)" in [cell.value for cell in sheet[1]]
-    assert sheet.max_row == 5
-    assert sheet["A5"].value == "Total (TZS)"
-    assert sheet["E5"].value == 300
+    assert sheet["A1"].value == "Financial Reports: Bills Issued"
+    assert sheet["A2"].value == "Date range: 2026-09-01 to 2026-09-30"
+    assert sheet["A4"].value == "Date"
+    assert sheet.freeze_panes == "A5"
+    assert "Currency" not in [cell.value for cell in sheet[4]]
+    assert "Amount (TZS)" in [cell.value for cell in sheet[4]]
+    assert sheet.max_row == 8
+    assert sheet["A8"].value == "Total (TZS)"
+    assert sheet["E8"].value == 300
     assert "Matching records" not in {
         cell.value for row in sheet.iter_rows() for cell in row
     }
@@ -480,14 +483,34 @@ def test_full_report_totals_include_all_outstanding_amount_columns(
 
 
 def test_full_orders_report_totals_submitted_stones(api_client, admin_user):
-    """The Orders section totals its numeric submitted-stones column."""
-    OrderFactory(received_date="2026-09-05", stone_count=7)
+    """Each operational section has a count; orders also sum submitted stones."""
+    order = OrderFactory(received_date="2026-09-05", stone_count=7)
+    stone = StoneFactory(order=order)
+    type(stone).objects.filter(pk=stone.pk).update(created_at=_at(8))
+    findings = IdentificationReport.objects.create(
+        stone=stone, report_number="TOTAL-RPT-1", is_finalized=True
+    )
+    Certificate.objects.create(
+        stone=stone,
+        report=findings,
+        certificate_number="TOTAL-CERT-1",
+        weight_snapshot=Decimal("1"),
+        stone_type_snapshot=stone.stone_type.name,
+        issued_at=_at(10),
+    )
     api_client.force_authenticate(admin_user)
     response = api_client.get("/api/v1/reports/operational/export/", DATES)
     assert response.status_code == 200
-    sheet = load_workbook(BytesIO(response.content))["Orders received"]
-    assert sheet.cell(sheet.max_row, 1).value == "Total submitted stones"
-    assert sheet.cell(sheet.max_row, 4).value == 7
+    workbook = load_workbook(BytesIO(response.content))
+    orders = workbook["Orders received"]
+    assert orders["A1"].value == "Operational Reports: Orders received"
+    assert orders["A2"].value == "Date range: 2026-09-01 to 2026-09-30"
+    assert orders.cell(orders.max_row, 1).value == "Total orders: 1"
+    assert orders.cell(orders.max_row, 4).value == 7
+    stones = workbook["Stones registered"]
+    assert stones.cell(stones.max_row, 1).value == "Total stones: 1"
+    certificates = workbook["Certificates issued"]
+    assert certificates.cell(certificates.max_row, 1).value == "Total certificates: 1"
 
 
 def test_pdf_has_a_valid_document_header(api_client, admin_user):
@@ -517,7 +540,7 @@ def test_highlights_xlsx_contains_only_authorized_summary_values(api_client, use
     assert workbook.sheetnames == ["Highlights"]
     values = list(workbook.active.values)
     assert workbook.active.max_column == 2
-    assert ("Period", "2026-09-01 to 2026-09-30") in values
+    assert ("Date range", "2026-09-01 to 2026-09-30") in values
     assert ("Bills Issued", None) in values
     assert ("Count", 1) in values
     assert ("Amount (TZS)", 100) in values
