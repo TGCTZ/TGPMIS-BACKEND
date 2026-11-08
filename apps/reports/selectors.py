@@ -7,8 +7,8 @@ so joining an order's stones cannot multiply the money attributed to its bill.
 from datetime import datetime, time, timedelta
 from decimal import Decimal
 
-from django.db.models import Count, DecimalField, F, OuterRef, Q, Subquery, Sum, Value
-from django.db.models.functions import Coalesce, Greatest, NullIf
+from django.db.models import Count, DecimalField, F, OuterRef, Q, Subquery, Sum
+from django.db.models.functions import Coalesce, Greatest
 from django.utils import timezone
 
 from apps.billing.models import Bill, BillItem, Payment
@@ -31,8 +31,9 @@ def _bill_source():
 
 def _outstanding_source():
     payments = (
-        Payment.objects.filter(bill_id=OuterRef("pk"), is_processed=True)
-        .filter(Q(currency="") | Q(currency=OuterRef("currency")))
+        Payment.objects.filter(
+            bill_id=OuterRef("pk"), is_processed=True, currency=OuterRef("currency")
+        )
         .order_by()
         .values("bill_id")
         .annotate(amount=Sum("paid_amount"))
@@ -69,11 +70,6 @@ def _source(key):
                     bill__deleted_at__isnull=True,
                     bill__order__deleted_at__isnull=True,
                     bill__order__customer__deleted_at__isnull=True,
-                )
-            )
-            .annotate(
-                report_currency=Coalesce(
-                    NullIf("currency", Value("")), "bill__currency", Value("Unknown")
                 )
             )
         )
@@ -165,9 +161,6 @@ def section_summary(key: str, queryset, missing_dates: int) -> dict:
     categories = []
     varieties = []
     if key in ("billing", "outstanding", "collections", "exceptions"):
-        currency_field = (
-            "report_currency" if key in ("collections", "exceptions") else "currency"
-        )
         amount_field = {
             "billing": "total_amount",
             "outstanding": "balance",
@@ -176,13 +169,13 @@ def section_summary(key: str, queryset, missing_dates: int) -> dict:
         }[key]
         amounts = [
             {
-                "currency": row[currency_field],
+                "currency": row["currency"],
                 "amount": str(row["amount"] or Decimal("0.00")),
             }
             for row in queryset.order_by()
-            .values(currency_field)
+            .values("currency")
             .annotate(amount=Sum(amount_field))
-            .order_by(currency_field)
+            .order_by("currency")
         ]
     statuses = []
     if key in ("billing", "outstanding"):
@@ -306,7 +299,7 @@ def report_filters(keys: list[str]) -> dict:
 
 
 def report_columns(key: str) -> list[dict]:
-    """Match the exact row projection; money and dates have explicit display types."""
+    """Expose readable columns; the TZS code remains in row data for formatting."""
     fields = [
         ("event_date", "Date", "date"),
         ("reference", "Reference", "text"),
@@ -321,11 +314,11 @@ def report_columns(key: str) -> list[dict]:
     if key != "orders":
         fields.append(("order", "Order", "text"))
     if key in ("billing", "outstanding", "collections", "exceptions"):
-        fields += [("currency", "Currency", "text"), ("amount", "Amount", "money")]
+        fields.append(("amount", "Amount (TZS)", "money"))
         if key == "outstanding":
             fields += [
-                ("paid", "Paid so far", "money"),
-                ("balance", "Owed today", "money"),
+                ("paid", "Paid so far (TZS)", "money"),
+                ("balance", "Owed today (TZS)", "money"),
             ]
     else:
         fields.append(
@@ -348,7 +341,7 @@ def report_rows(key: str, objects) -> list[dict]:
             event_date = obj.trx_dt_tm
             row = {
                 "reference": obj.trx_id or obj.pay_ref_id,
-                "currency": obj.report_currency,
+                "currency": obj.currency,
                 "amount": str(obj.paid_amount or Decimal("0.00")),
                 "status": "Processed" if obj.is_processed else "Unprocessed",
             }

@@ -1,13 +1,23 @@
 """Bill generation, GePG payment notifications and settlement."""
 
+from datetime import date
 from decimal import Decimal
 
 import pytest
 
 from django.core.management import call_command
+from django.db import IntegrityError, connection, transaction
+from django.db.migrations.executor import MigrationExecutor
 
 from apps.billing.dev import simulate_payment
-from apps.billing.models import Bill, BillItem, GePGCallback, Payment
+from apps.billing.models import (
+    Bill,
+    BillItem,
+    GePGCallback,
+    Payment,
+    Reconciliation,
+    ReconciliationTransaction,
+)
 from apps.billing.selectors import billing_worklist
 from apps.billing.services import generate_bill_for_order
 from apps.core.exceptions import ServiceError
@@ -158,6 +168,68 @@ def test_a_partial_payment_leaves_the_bill_unsettled(billable_order):
     assert set(billable_order.stones.values_list("status", flat=True)) == {
         StoneStatus.BILLED
     }
+
+
+def test_non_tzs_payment_notification_is_rejected(billable_order):
+    """A gateway currency mismatch cannot create a payment or settle its bill."""
+    from apps.billing.dev import _payment_xml
+    from apps.billing.services import process_payment_notification
+
+    bill = generate_bill_for_order(billable_order)
+    xml = _payment_xml(bill, bill.total_amount, "TRX-USD-1").replace(
+        "<Ccy>TZS</Ccy>", "<Ccy>USD</Ccy>"
+    )
+    ack = process_payment_notification(xml)
+
+    assert "7242" in ack
+    assert not Payment.objects.filter(trx_id="TRX-USD-1").exists()
+    bill.refresh_from_db()
+    assert bill.status == BillStatus.PENDING
+
+
+def test_database_rejects_non_tzs_bill_currency(billable_order):
+    """Direct ORM updates cannot bypass the currency rule."""
+    bill = generate_bill_for_order(billable_order)
+    with pytest.raises(IntegrityError), transaction.atomic():
+        Bill.objects.filter(pk=bill.pk).update(currency="USD")
+    bill.refresh_from_db()
+    assert bill.currency == "TZS"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_currency_migration_corrects_existing_labels():
+    """Legacy currency codes become TZS before the new constraints are added."""
+    bill = Bill.objects.create(
+        order=OrderFactory(), bill_number="BILL-CURRENCY-MIGRATION"
+    )
+    payment = Payment.objects.create(bill=bill, trx_id="TRX-CURRENCY-MIGRATION")
+    reconciliation = Reconciliation.objects.create(
+        req_id="RECON-CURRENCY-MIGRATION", trx_dt=date(2026, 11, 8)
+    )
+    reconciled = ReconciliationTransaction.objects.create(
+        reconciliation=reconciliation, trx_id="RECON-TRX-CURRENCY-MIGRATION"
+    )
+    bill.delete()  # The correction must include soft-deleted financial records.
+    old_state = [("billing", "0004_gepg_durable_messages")]
+    new_state = [("billing", "0005_enforce_tzs_currency")]
+    executor = MigrationExecutor(connection)
+    executor.migrate(old_state)
+    try:
+        old_apps = executor.loader.project_state(old_state).apps
+        for name, pk, old_currency in (
+            ("Bill", bill.pk, "USD"),
+            ("Payment", payment.pk, ""),
+            ("ReconciliationTransaction", reconciled.pk, "USD"),
+        ):
+            old_apps.get_model("billing", name)._base_manager.filter(pk=pk).update(
+                currency=old_currency
+            )
+        MigrationExecutor(connection).migrate(new_state)
+        for record in (bill, payment, reconciled):
+            record.refresh_from_db()
+            assert record.currency == "TZS"
+    finally:
+        MigrationExecutor(connection).migrate(new_state)
 
 
 def test_an_unparseable_notification_returns_a_failure_ack():

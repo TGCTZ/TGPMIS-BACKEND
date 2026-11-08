@@ -154,15 +154,13 @@ def test_catalog_and_operational_sections_follow_individual_permissions(api_clie
     )
 
 
-def test_totals_span_all_pages_and_currencies_without_multiplying_payments(
-    api_client, admin_user
-):
+def test_totals_span_all_pages_without_multiplying_payments(api_client, admin_user):
     """More detail rows or repeated relationships must not inflate money."""
     bill = _bill()
     StoneFactory.create_batch(3, order=bill.order)
     _payment(bill)
     _payment(bill)
-    other = _bill(currency="USD")
+    other = _bill()
     _payment(other, paid_amount=Decimal("10.00"))
     api_client.force_authenticate(admin_user)
     response = api_client.get(
@@ -170,13 +168,15 @@ def test_totals_span_all_pages_and_currencies_without_multiplying_payments(
     )
     assert response.status_code == 200
     assert response.data["count"] == 2
+    assert "currency" not in {column["key"] for column in response.data["columns"]}
+    assert "Amount (TZS)" in {column["label"] for column in response.data["columns"]}
     assert len(response.data["results"]) == 1
     assert _summary(response, "billing")["count"] == 2
     amounts = {
         item["currency"]: Decimal(item["amount"])
         for item in _summary(response, "outstanding")["amounts"]
     }
-    assert amounts == {"TZS": Decimal("50"), "USD": Decimal("90")}
+    assert amounts == {"TZS": Decimal("140")}
 
 
 def test_outstanding_filters_issue_date_but_uses_payments_received_later(
@@ -260,16 +260,14 @@ def test_operational_events_use_independent_dates_and_distinct_orders(
     assert response.data["results"][0]["stones"] == 7
 
 
-def test_grouped_stone_and_variety_totals_sum_bill_lines_by_currency(
-    api_client, admin_user
-):
-    """Grouped amounts reflect billed lines and never combine currencies."""
+def test_grouped_stone_and_variety_totals_sum_bill_lines_in_tzs(api_client, admin_user):
+    """Grouped amounts combine billed lines in the system's single currency."""
     first = StoneFactory()
     second = StoneFactory(stone_category=first.stone_category)
     type(first).objects.filter(pk__in=[first.pk, second.pk]).update(created_at=_at(8))
     bills = [
         _bill(order=first.order, currency="TZS"),
-        _bill(order=second.order, currency="USD"),
+        _bill(order=second.order),
     ]
     for stone, bill, amount in zip(
         (first, second), bills, (Decimal("120.00"), Decimal("45.00")), strict=True
@@ -307,10 +305,7 @@ def test_grouped_stone_and_variety_totals_sum_bill_lines_by_currency(
         if row["name"] == first.stone_category.name
     )
     assert category["count"] == 2
-    assert category["amounts"] == [
-        {"currency": "TZS", "amount": "120.00"},
-        {"currency": "USD", "amount": "45.00"},
-    ]
+    assert category["amounts"] == [{"currency": "TZS", "amount": "165.00"}]
 
     response = api_client.get(
         "/api/v1/reports/operational/", DATES | {"section": "certificates"}
@@ -444,9 +439,11 @@ def test_xlsx_exports_every_page_and_keeps_control_numbers_as_text(
     workbook = load_workbook(BytesIO(response.content))
     sheet = workbook["Bills Issued"]
     assert sheet["A1"].value == "Date"
+    assert "Currency" not in [cell.value for cell in sheet[1]]
+    assert "Amount (TZS)" in [cell.value for cell in sheet[1]]
     assert sheet.max_row == 5
     assert sheet["A5"].value == "Total (TZS)"
-    assert sheet["F5"].value == 300
+    assert sheet["E5"].value == 300
     assert "Matching records" not in {
         cell.value for row in sheet.iter_rows() for cell in row
     }
@@ -455,12 +452,12 @@ def test_xlsx_exports_every_page_and_keeps_control_numbers_as_text(
     assert all(cell.data_type == "s" for cell in matching)
 
 
-def test_full_report_totals_keep_currencies_and_outstanding_columns_separate(
+def test_full_report_totals_include_all_outstanding_amount_columns(
     api_client, admin_user
 ):
-    """A total never combines currencies or omits paid and owed amounts."""
+    """The TZS footer sums bill amounts, paid amounts and current balances."""
     tzs_bill = _bill(currency="TZS")
-    _bill(currency="USD")
+    _bill()
     _payment(tzs_bill)
     api_client.force_authenticate(admin_user)
     response = api_client.get("/api/v1/reports/financial/export/", DATES)
@@ -471,15 +468,15 @@ def test_full_report_totals_keep_currencies_and_outstanding_columns_separate(
         for row in workbook["Bills Issued"].values
         if str(row[0]).startswith("Total (")
     }
-    assert billing_totals["Total (TZS)"][4:6] == ("TZS", 100)
-    assert billing_totals["Total (USD)"][4:6] == ("USD", 100)
+    assert billing_totals["Total (TZS)"][4] == 200
+    assert len(billing_totals) == 1
     outstanding_totals = {
         row[0]: row
         for row in workbook["Outstanding bills"].values
         if str(row[0]).startswith("Total (")
     }
-    assert outstanding_totals["Total (TZS)"][5:8] == (100, 25, 75)
-    assert outstanding_totals["Total (USD)"][5:8] == (100, 0, 100)
+    assert outstanding_totals["Total (TZS)"][4:7] == (200, 25, 175)
+    assert len(outstanding_totals) == 1
 
 
 def test_full_orders_report_totals_submitted_stones(api_client, admin_user):

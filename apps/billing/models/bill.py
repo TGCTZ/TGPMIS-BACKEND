@@ -6,6 +6,7 @@ from django.db.models import Q
 from apps.core.models import BaseModel
 from apps.gems.enums import BillStatus
 
+from ..constants import CURRENCY_TZS
 from .provider import ServiceProvider
 
 
@@ -30,7 +31,9 @@ class Bill(BaseModel):
         related_name="bills",
     )
     total_amount = models.DecimalField(max_digits=15, decimal_places=2, default=0)
-    currency = models.CharField(max_length=3, default="TZS")
+    currency = models.CharField(
+        max_length=3, choices=[(CURRENCY_TZS, CURRENCY_TZS)], default=CURRENCY_TZS
+    )
     status = models.CharField(
         max_length=20, choices=BillStatus.choices, default=BillStatus.PENDING
     )
@@ -52,6 +55,9 @@ class Bill(BaseModel):
         ordering = ["-created_at"]
         permissions = [("generate_bill", "Can generate a bill")]
         constraints = [
+            models.CheckConstraint(
+                condition=Q(currency=CURRENCY_TZS), name="billing_bill_currency_tzs"
+            ),
             models.UniqueConstraint(
                 fields=["bill_number"],
                 condition=Q(deleted_at__isnull=True),
@@ -98,9 +104,8 @@ class BillItem(BaseModel):
 class Payment(BaseModel):
     """A payment notification received from GePG (one per transaction).
 
-    The gateway's fields are stored as sent, including ``raw_request``: this row
-    is the evidence of what the gateway claimed, and normalising it away would
-    lose the only record of a disputed payment.
+    ``raw_request`` preserves the gateway's original message for disputes.
+    Only TZS notifications are accepted into the structured payment fields.
     """
 
     bill = models.ForeignKey(
@@ -129,7 +134,9 @@ class Payment(BaseModel):
         max_digits=15, decimal_places=2, null=True, blank=True
     )
     bill_pay_opt = models.CharField(max_length=1, blank=True, default="")
-    currency = models.CharField(max_length=3, blank=True, default="")
+    currency = models.CharField(
+        max_length=3, choices=[(CURRENCY_TZS, CURRENCY_TZS)], default=CURRENCY_TZS
+    )
     coll_acc_num = models.CharField(max_length=50, blank=True, default="")
     trx_dt_tm = models.DateTimeField(null=True, blank=True)
     usd_pay_chnl = models.CharField(max_length=50, blank=True, default="")
@@ -146,6 +153,9 @@ class Payment(BaseModel):
     class Meta:
         ordering = ["-trx_dt_tm"]
         constraints = [
+            models.CheckConstraint(
+                condition=Q(currency=CURRENCY_TZS), name="billing_payment_currency_tzs"
+            ),
             # The idempotency key for a redelivered notification.
             models.UniqueConstraint(
                 fields=["trx_id"],
