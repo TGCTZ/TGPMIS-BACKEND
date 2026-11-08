@@ -442,6 +442,8 @@ def test_xlsx_exports_every_page_and_keeps_control_numbers_as_text(
     assert sheet["A2"].value == "Date range: 2026-09-01 to 2026-09-30"
     assert sheet["A4"].value == "Date"
     assert sheet.freeze_panes == "A5"
+    assert sheet["A4"].border.right.style == "thin"
+    assert sheet["A5"].border.right.style == "thin"
     assert "Currency" not in [cell.value for cell in sheet[4]]
     assert "Amount (TZS)" in [cell.value for cell in sheet[4]]
     assert sheet.max_row == 8
@@ -561,8 +563,8 @@ def test_highlights_pdf_is_a_valid_download(api_client, admin_user):
     assert response.content.startswith(b"%PDF-")
 
 
-def test_operational_highlights_keep_group_counts_and_amounts_clear():
-    """Category values stay separate, and hidden categories do not enter downloads."""
+def test_operational_highlights_show_group_counts_and_amounts_in_tables():
+    """Category and variety rows align names, counts and TZS amounts."""
     report = {
         "title": "Operational reports",
         "range": {"from": DATES["from_date"], "to": DATES["to_date"]},
@@ -581,17 +583,35 @@ def test_operational_highlights_keep_group_counts_and_amounts_clear():
             },
             {"name": "TestCategory", "count": 1, "amounts": []},
         ],
-        "varieties": [],
+        "varieties": [
+            {
+                "name": "Ruby",
+                "count": 2,
+                "amounts": [{"currency": "TZS", "amount": "120.25"}],
+            }
+        ],
         "missing_dates": 1,
     }
     content = export_highlights(
         report, {"stones": {"summary": summary}}, file_type="xlsx"
     )
-    values = list(load_workbook(BytesIO(content)).active.values)
-    assert ("Stone categories (count)", None) in values
-    assert ("Precious", 2) in values
-    assert ("Precious amount (TZS)", 120.25) in values
-    assert ("Records without an event date (excluded)", 1) in values
+    sheet = load_workbook(BytesIO(content)).active
+    values = list(sheet.values)
+    assert sheet.max_column == 3
+    assert ("Stone category", "Count", "Amount (TZS)") in values
+    assert ("Precious", 2, 120.25) in values
+    assert ("Variety", "Count", "Amount (TZS)") in values
+    assert ("Ruby", 2, 120.25) in values
+    category_row = next(
+        index for index, row in enumerate(values, 1) if row[0] == "Stone category"
+    )
+    assert sheet.cell(category_row, 1).border.right.style == "thin"
+    assert sheet.cell(category_row + 1, 2).border.right.style == "thin"
+    assert sheet.cell(category_row, 2).alignment.horizontal == "center"
+    assert sheet.cell(category_row + 1, 2).alignment.horizontal == "center"
+    count_row = next(index for index, row in enumerate(values, 1) if row[0] == "Count")
+    assert sheet.cell(count_row, 2).alignment.horizontal == "center"
+    assert ("Records without an event date (excluded)", 1, None) in values
     assert not any("TestCategory" in str(cell) for row in values for cell in row)
 
 

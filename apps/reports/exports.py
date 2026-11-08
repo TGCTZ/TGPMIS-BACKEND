@@ -10,7 +10,7 @@ from openpyxl.cell import WriteOnlyCell
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_RIGHT
+from reportlab.lib.enums import TA_CENTER, TA_RIGHT
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.utils import ImageReader
@@ -225,7 +225,7 @@ def _report_pdf_document(output, report, title, *, side_margin):
 
 
 def _highlight_sections(sections):
-    """Give both file formats the same simple, permission scoped summary rows."""
+    """Build shared summary rows and grouped operational tables for downloads."""
     for section in sections.values():
         summary = section["summary"]
         rows = [("Count", summary["count"])]
@@ -235,27 +235,30 @@ def _highlight_sections(sections):
             rows.append(
                 (status["status"].replace("_", " ").capitalize(), status["count"])
             )
+        tables = []
         for heading, groups in (
-            ("Stone categories", summary["categories"]),
-            ("Varieties", summary["varieties"]),
+            ("Stone category", summary["categories"]),
+            ("Variety", summary["varieties"]),
         ):
             visible_groups = [
                 group
                 for group in groups
-                if heading != "Stone categories" or group["name"] != "TestCategory"
+                if heading != "Stone category" or group["name"] != "TestCategory"
             ]
             if visible_groups:
-                rows.append((f"{heading} (count)", None))
+                table_rows = []
+                tables.append((heading, table_rows))
             for group in visible_groups:
                 name = group["name"] or "Unspecified"
-                rows.append((name, group["count"]))
-                for amount in group["amounts"]:
-                    rows.append(
-                        (
-                            f"{name} amount ({amount['currency']})",
-                            Decimal(amount["amount"]),
-                        )
-                    )
+                amount = next(
+                    (
+                        Decimal(item["amount"])
+                        for item in group["amounts"]
+                        if item["currency"] == "TZS"
+                    ),
+                    None,
+                )
+                table_rows.append((name, group["count"], amount))
         if summary["missing_dates"]:
             rows.append(
                 (
@@ -263,15 +266,17 @@ def _highlight_sections(sections):
                     summary["missing_dates"],
                 )
             )
-        yield summary["title"], rows
+        yield summary["title"], rows, tables
 
 
 def _highlight_xlsx(report, sections):
     workbook = Workbook()
     sheet = workbook.active
     sheet.title = "Highlights"
+    highlights = list(_highlight_sections(sections))
+    has_groups = any(tables for _, _, tables in highlights)
     sheet.append([report["title"] + " highlights"])
-    sheet.merge_cells("A1:B1")
+    sheet.merge_cells("A1:C1" if has_groups else "A1:B1")
     sheet["A1"].font = Font(size=16, bold=True, color="24466A")
     sheet.row_dimensions[1].height = 25
     sheet.append(["Date range", f"{report['range']['from']} to {report['range']['to']}"])
@@ -280,23 +285,41 @@ def _highlight_xlsx(report, sections):
         sheet.append([label, value])
     sheet.append([""])
     sheet.freeze_panes = f"A{sheet.max_row + 1}"
-    for title, rows in _highlight_sections(sections):
-        sheet.append([title, ""])
+    separator = Side(style="thin", color="D8E0E5")
+    for title, rows, tables in highlights:
+        sheet.append([title])
         heading_row = sheet.max_row
-        for cell in sheet[heading_row][:2]:
+        for cell in sheet[heading_row][: 3 if has_groups else 2]:
             cell.fill = PatternFill("solid", fgColor="24466A")
         heading = sheet.cell(heading_row, 1)
         heading.font = Font(bold=True, color="FFFFFF")
         for label, value in rows:
             sheet.append([label, value])
+            sheet.cell(sheet.max_row, 1).border = Border(right=separator)
             value_cell = sheet.cell(sheet.max_row, 2)
-            value_cell.alignment = Alignment(horizontal="right")
+            value_cell.alignment = Alignment(
+                horizontal="center" if isinstance(value, int) else "right"
+            )
             if isinstance(value, Decimal):
                 value_cell.number_format = "#,##0.00"
             elif isinstance(value, int):
                 value_cell.number_format = "#,##0"
-            elif value is None:
-                sheet.cell(sheet.max_row, 1).font = Font(bold=True)
+        for heading, table_rows in tables:
+            sheet.append([heading, "Count", "Amount (TZS)"])
+            for cell in sheet[sheet.max_row][:3]:
+                cell.fill = PatternFill("solid", fgColor="E7EEF0")
+                cell.font = Font(bold=True)
+            sheet.cell(sheet.max_row, 2).alignment = Alignment(horizontal="center")
+            for column in (1, 2):
+                sheet.cell(sheet.max_row, column).border = Border(right=separator)
+            for name, count, amount in table_rows:
+                sheet.append([name, count, amount])
+                for column in (1, 2):
+                    sheet.cell(sheet.max_row, column).border = Border(right=separator)
+                sheet.cell(sheet.max_row, 2).number_format = "#,##0"
+                sheet.cell(sheet.max_row, 2).alignment = Alignment(horizontal="center")
+                if amount is not None:
+                    sheet.cell(sheet.max_row, 3).number_format = "#,##0.00"
         sheet.append([""])
     # Filter labels and category names may come from data; never parse them as formulas.
     for row in sheet:
@@ -305,6 +328,8 @@ def _highlight_xlsx(report, sections):
                 cell.data_type = "s"
     sheet.column_dimensions["A"].width = 48
     sheet.column_dimensions["B"].width = 24
+    if has_groups:
+        sheet.column_dimensions["C"].width = 20
     output = BytesIO()
     workbook.save(output)
     return output.getvalue()
@@ -319,11 +344,17 @@ def _highlight_pdf(report, sections):
     value_style = ParagraphStyle(
         "HighlightValue", parent=styles["BodyText"], alignment=TA_RIGHT
     )
+    count_style = ParagraphStyle(
+        "HighlightCount", parent=styles["BodyText"], alignment=TA_CENTER
+    )
     heading_style = ParagraphStyle(
         "HighlightSection", parent=styles["BodyText"], fontName="Helvetica-Bold"
     )
+    count_heading_style = ParagraphStyle(
+        "HighlightCountHeading", parent=heading_style, alignment=TA_CENTER
+    )
     story = []
-    for title, rows in _highlight_sections(sections):
+    for title, rows, tables in _highlight_sections(sections):
         data = [[Paragraph(escape(title), heading_style), ""]]
         for label, value in rows:
             display_value = (
@@ -336,7 +367,10 @@ def _highlight_pdf(report, sections):
             data.append(
                 [
                     Paragraph(escape(label), styles["BodyText"]),
-                    Paragraph(display_value, value_style),
+                    Paragraph(
+                        display_value,
+                        count_style if isinstance(value, int) else value_style,
+                    ),
                 ]
             )
         table = LongTable(
@@ -356,6 +390,7 @@ def _highlight_pdf(report, sections):
                         [colors.white, colors.HexColor("#f8fafc")],
                     ),
                     ("LINEBELOW", (0, 1), (-1, -1), 0.25, colors.HexColor("#d8e0e5")),
+                    ("LINEBEFORE", (1, 1), (1, -1), 0.5, colors.HexColor("#cbd5e1")),
                     ("VALIGN", (0, 0), (-1, -1), "TOP"),
                     ("TOPPADDING", (0, 0), (-1, -1), 6),
                     ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
@@ -363,6 +398,54 @@ def _highlight_pdf(report, sections):
             )
         )
         story.append(table)
+        for heading, table_rows in tables:
+            story.append(Spacer(1, 6))
+            grouped_data = [
+                [
+                    Paragraph(escape(heading), heading_style),
+                    Paragraph("Count", count_heading_style),
+                    Paragraph("Amount (TZS)", heading_style),
+                ]
+            ]
+            for name, count, amount in table_rows:
+                grouped_data.append(
+                    [
+                        Paragraph(escape(name), styles["BodyText"]),
+                        Paragraph(f"{count:,}", count_style),
+                        Paragraph(
+                            f"{amount:,.2f}" if amount is not None else "", value_style
+                        ),
+                    ]
+                )
+            grouped_table = LongTable(
+                grouped_data,
+                colWidths=[
+                    document.width * 0.62,
+                    document.width * 0.16,
+                    document.width * 0.22,
+                ],
+                repeatRows=1,
+            )
+            grouped_table.setStyle(
+                TableStyle(
+                    [
+                        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e7eef0")),
+                        (
+                            "ROWBACKGROUNDS",
+                            (0, 1),
+                            (-1, -1),
+                            [colors.white, colors.HexColor("#f8fafc")],
+                        ),
+                        ("LINEBELOW", (0, 0), (-1, -1), 0.25, colors.HexColor("#d8e0e5")),
+                        ("LINEBEFORE", (1, 0), (1, -1), 0.5, colors.HexColor("#cbd5e1")),
+                        ("LINEBEFORE", (2, 0), (2, -1), 0.5, colors.HexColor("#cbd5e1")),
+                        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                        ("TOPPADDING", (0, 0), (-1, -1), 6),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                    ]
+                )
+            )
+            story.append(grouped_table)
         story.append(Spacer(1, 12))
     document.build(story)
     return output.getvalue()
@@ -408,6 +491,8 @@ def _detail_total_rows(key, totals, count):
 
 def _xlsx(report, sections):
     workbook = Workbook(write_only=True)
+    separator = Side(style="thin", color="D8E0E5")
+    top_border = Side(style="thin", color="9AAFB9")
     for key, section in sections.items():
         summary = section["summary"]
         sheet = workbook.create_sheet(summary["title"][:31])
@@ -435,9 +520,11 @@ def _xlsx(report, sections):
         for index, width in enumerate(widths, 1):
             sheet.column_dimensions[get_column_letter(index)].width = width
         headers = []
-        for column in columns:
+        for index, column in enumerate(columns):
             cell = WriteOnlyCell(sheet, value=column["label"])
             cell.font = Font(bold=True)
+            if index < len(columns) - 1:
+                cell.border = Border(right=separator)
             headers.append(cell)
         sheet.append(headers)
         totals = {}
@@ -451,10 +538,12 @@ def _xlsx(report, sections):
                 for column, width in zip(columns, widths, strict=True)
             )
             cells = []
-            for column in columns:
+            for index, column in enumerate(columns):
                 value = row[column["key"]]
                 cell = WriteOnlyCell(sheet, value=value)
                 cell.alignment = Alignment(wrap_text=True, vertical="top")
+                if index < len(columns) - 1:
+                    cell.border = Border(right=separator)
                 if column["kind"] == "money":
                     cell.value = float(value)
                     cell.number_format = "#,##0.00"
@@ -464,12 +553,15 @@ def _xlsx(report, sections):
             sheet.append(cells)
         for total in _detail_total_rows(key, totals, summary["count"]):
             cells = []
-            for column in columns:
+            for index, column in enumerate(columns):
                 value = total.get(column["key"], "")
                 cell = WriteOnlyCell(sheet, value=value)
                 cell.font = Font(bold=True)
                 cell.fill = PatternFill("solid", fgColor="E7EEF0")
-                cell.border = Border(top=Side(style="thin", color="9AAFB9"))
+                cell.border = Border(
+                    top=top_border,
+                    right=separator if index < len(columns) - 1 else None,
+                )
                 if column["kind"] == "money" and value != "":
                     cell.value = float(value)
                     cell.number_format = "#,##0.00"
