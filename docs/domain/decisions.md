@@ -11,7 +11,7 @@ page when those contracts change. The sequence of work is described in
 | A type, when supplied, must belong to the selected category | Stone serializers and `update_stone()` |
 | Billing uses a flat fee per category, independent of weight | `preview_bill_for_order()`, `_create_local_bill()` |
 | There is one bill per order, with copied line amounts | `Bill.order`, `BillItem` |
-| Recorded payments may partially or fully settle a bill | `process_payment_notification()` |
+| Bills stay pending until recorded payments cover the full total | `process_payment_notification()` |
 | Findings require a fully paid bill | `_assert_payment_settled()` |
 | Only one non-deleted identification report may exist per stone | `IdentificationReport` conditional constraint |
 | Finalization through the API also issues the certificate | `IdentificationReportViewSet.finalize()` |

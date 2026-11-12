@@ -183,7 +183,7 @@ def test_certification_needs_a_settled_bill(certifiable_stone, user):
     from apps.gems.enums import BillStatus
 
     bill = certifiable_stone.order.bill
-    bill.status = BillStatus.PARTIALLY_PAID
+    bill.status = BillStatus.PENDING
     bill.save(update_fields=["status"])
 
     with pytest.raises(ServiceError, match="bill must be fully paid"):

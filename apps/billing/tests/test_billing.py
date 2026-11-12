@@ -152,21 +152,34 @@ def test_a_redelivered_notification_is_idempotent(billable_order):
     )
 
 
-def test_a_partial_payment_leaves_the_bill_unsettled(billable_order):
-    """Stones stay billed until the full amount arrives."""
+def test_underpaid_transactions_keep_the_bill_pending_until_fully_covered(
+    billable_order,
+):
+    """Real transactions are recorded, but only full settlement marks paid."""
     from apps.billing.dev import _payment_xml
     from apps.billing.services import process_payment_notification
 
     bill = generate_bill_for_order(billable_order)
     bill.control_number = "991234567891"
     bill.save(update_fields=["control_number"])
+    first_amount = (bill.total_amount / Decimal("2")).quantize(Decimal("0.01"))
+    second_amount = bill.total_amount - first_amount
 
-    process_payment_notification(_payment_xml(bill, Decimal("50000.00"), "TRX-PARTIAL-1"))
+    process_payment_notification(_payment_xml(bill, first_amount, "TRX-UNDERPAY-1"))
 
     bill.refresh_from_db()
-    assert bill.status == BillStatus.PARTIALLY_PAID
+    assert bill.status == BillStatus.PENDING
+    assert Payment.objects.filter(trx_id="TRX-UNDERPAY-1", is_processed=True).exists()
     assert set(billable_order.stones.values_list("status", flat=True)) == {
         StoneStatus.BILLED
+    }
+
+    process_payment_notification(_payment_xml(bill, second_amount, "TRX-UNDERPAY-2"))
+
+    bill.refresh_from_db()
+    assert bill.status == BillStatus.PAID
+    assert set(billable_order.stones.values_list("status", flat=True)) == {
+        StoneStatus.PAID
     }
 
 
@@ -475,30 +488,6 @@ def test_simulate_payment_endpoint_settles_a_bill(settings, admin_user, auth_cli
     assert response.status_code == 200, response.data
     assert response.data["status"] == "paid"
     assert Decimal(response.data["amount_paid"]) == Decimal("5000.00")
-
-
-def test_simulate_payment_endpoint_accepts_a_part_payment(
-    settings, admin_user, auth_client
-):
-    """The only route to PARTIALLY_PAID, which nothing else can produce offline."""
-    settings.DEBUG = True
-    settings.GEPG_SIMULATE = True
-    order = OrderFactory(stone_count=1)
-    add_stone(order, stone_type=StoneTypeFactory(category__price=Decimal("5000.00")))
-    bill = generate_bill_for_order(order)
-
-    response = auth_client(admin_user).post(
-        f"/api/v1/bills/{bill.pk}/simulate-payment/", {"amount": "2000.00"}
-    )
-
-    assert response.status_code == 200, response.data
-    assert response.data["status"] == "partially_paid"
-
-    # A second call tops it up rather than being swallowed as a redelivery.
-    again = auth_client(admin_user).post(
-        f"/api/v1/bills/{bill.pk}/simulate-payment/", {"amount": "3000.00"}
-    )
-    assert again.data["status"] == "paid"
 
 
 def test_simulate_payment_is_invisible_outside_simulation(

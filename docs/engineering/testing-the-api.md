@@ -258,8 +258,8 @@ network and returns a fake control number.
 
 With it on, the Bills screen grows a **Simulate payment** action on each row.
 It settles a bill by feeding a fake notification through the *real* handler, so
-the whole path is exercised - and it takes an amount, so a part-paid bill can be
-produced too.
+the whole path is exercised. The simulation pays the outstanding balance in
+full, matching the paid-or-pending bill states.
 
 The endpoint behind it is `POST /api/v1/bills/{id}/simulate-payment/`, which
 answers 404 unless the server has **both** `DEBUG` and `GEPG_SIMULATE` on.

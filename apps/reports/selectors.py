@@ -343,7 +343,7 @@ def report_rows(key: str, objects) -> list[dict]:
                 "reference": obj.trx_id or obj.pay_ref_id,
                 "currency": obj.currency,
                 "amount": str(obj.paid_amount or Decimal("0.00")),
-                "status": "Processed" if obj.is_processed else "Unprocessed",
+                "status": "Paid" if obj.is_processed else "Unprocessed",
             }
         elif key in ("billing", "outstanding"):
             order, event_date = obj.order, obj.issued_at

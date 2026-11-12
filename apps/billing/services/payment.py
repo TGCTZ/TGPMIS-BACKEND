@@ -110,5 +110,5 @@ def _apply_payment(header: dict, txn: dict, raw: str) -> None:
             link="/identification-reports?source=waiting",
         )
     else:
-        bill.status = BillStatus.PARTIALLY_PAID
+        bill.status = BillStatus.PENDING
     bill.save(update_fields=["status", "updated_at"])

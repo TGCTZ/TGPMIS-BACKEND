@@ -938,11 +938,6 @@ def test_stage_filter_agrees_with_the_derivation(settings, user):
     add_stone(unpaid, stone_type=priced())
     generate_bill_for_order(unpaid)
 
-    # part_paid
-    partly = OrderFactory(stone_count=1)
-    add_stone(partly, stone_type=priced())
-    simulate_payment(generate_bill_for_order(partly), Decimal("400.00"))
-
     # in_findings — paid, stones not certified
     findings = OrderFactory(stone_count=1)
     add_stone(findings, stone_type=priced())

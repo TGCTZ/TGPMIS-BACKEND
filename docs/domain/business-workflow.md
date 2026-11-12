@@ -17,9 +17,10 @@ This describes the implemented workflow. API paths below are relative to
    There is one bill per order and one line per stone. Missing prices prevent
    bill creation. Line amounts are copied at creation, so later catalogue edits
    do not reprice an existing bill. Weight and exact type are not needed to price it.
-4. **GePG confirms payment.** Partial payments set the bill to `partially_paid`.
-   Once the recorded payments cover the total, the bill becomes `paid` and its
-   stones move to `paid`. Findings services require a fully paid bill.
+4. **GePG confirms payment.** Underpaid transactions are recorded, but the bill
+   stays `pending` until recorded payments cover the full total. Then the bill
+   becomes `paid` and its stones move to `paid`. Findings services require a
+   fully paid bill.
 5. **The bench records findings** against each stone: exact type, weight, lookup
    selections, measurements, comments, and instruments. Drafts may be incomplete.
    Finalization requires species, variety, colour, shape/cut, nonzero weight,
