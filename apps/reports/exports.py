@@ -498,17 +498,12 @@ def _xlsx(report, sections):
         columns = report_columns(key)
         sheet.freeze_panes = "A5"
         sheet.row_dimensions[1].height = 25
-        title = WriteOnlyCell(
-            sheet, value=f"{report['title']}: {summary['title']}"
-        )
+        title = WriteOnlyCell(sheet, value=f"{report['title']}: {summary['title']}")
         title.font = Font(size=15, bold=True, color="24466A")
         sheet.append([title])
         date_range = WriteOnlyCell(
             sheet,
-            value=(
-                f"From: {report['range']['from']} "
-                f"To: {report['range']['to']}"
-            ),
+            value=(f"From: {report['range']['from']} To: {report['range']['to']}"),
         )
         date_range.font = Font(size=10, color="475569")
         sheet.append([date_range])
@@ -578,9 +573,7 @@ def _xlsx(report, sections):
 
 def _pdf(report, sections):
     output = BytesIO()
-    document = _report_pdf_document(
-        output, report, report["title"], side_margin=28
-    )
+    document = _report_pdf_document(output, report, report["title"], side_margin=28)
     styles = getSampleStyleSheet()
     styles["BodyText"].fontSize = 8
     styles["BodyText"].leading = 10
