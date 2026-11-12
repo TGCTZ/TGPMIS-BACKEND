@@ -85,7 +85,7 @@ def _draw_report_pdf_page(pdf_canvas, document, report, title):
         "United Republic of Tanzania",
         page_height - 34,
         "Helvetica-Bold",
-        11,
+        13,
         text_width,
         PDF_NAVY,
     )
@@ -94,7 +94,7 @@ def _draw_report_pdf_page(pdf_canvas, document, report, title):
         settings.CERTIFICATE_MINISTRY_NAME,
         page_height - 50,
         "Helvetica-Bold",
-        12,
+        14,
         text_width,
         PDF_NAVY,
     )
@@ -103,7 +103,7 @@ def _draw_report_pdf_page(pdf_canvas, document, report, title):
         settings.CERTIFICATE_LAB_NAME,
         page_height - 69,
         "Helvetica-Bold",
-        14,
+        16,
         text_width,
         PDF_BLUE,
     )
@@ -124,32 +124,28 @@ def _draw_report_pdf_page(pdf_canvas, document, report, title):
     pdf_canvas.setFillColor(colors.HexColor("#f1f5f9"))
     pdf_canvas.roundRect(left, band_y, right - left, 54, 4, stroke=0, fill=1)
     pdf_canvas.setFillColor(PDF_NAVY)
-    pdf_canvas.setFont("Helvetica-Bold", 9)
-    pdf_canvas.drawString(left + 10, band_y + 38, "DATE RANGE")
     pdf_canvas.setFont("Helvetica", 10)
     pdf_canvas.drawString(
-        left + 95,
+        left + 10,
         band_y + 37,
-        f"{report['range']['from']} to {report['range']['to']}",
+        f"From: {report['range']['from']}    To: {report['range']['to']}",
     )
-    filter_text = (
-        ", ".join(
+    if report["applied_filters"]:
+        filter_text = ", ".join(
             f"{label}: {value}" for label, value in report["applied_filters"].items()
         )
-        or "All records"
-    )
-    filters = Paragraph(
-        f"<b>FILTERS</b> &nbsp;&nbsp; {escape(filter_text)}",
-        ParagraphStyle(
-            "ReportHeaderFilters",
-            fontName="Helvetica",
-            fontSize=8,
-            leading=10,
-            textColor=PDF_MUTED,
-        ),
-    )
-    filters.wrap(right - left - 20, 25)
-    filters.drawOn(pdf_canvas, left + 10, band_y + 5)
+        filters = Paragraph(
+            f"<b>FILTERS</b> &nbsp;&nbsp; {escape(filter_text)}",
+            ParagraphStyle(
+                "ReportHeaderFilters",
+                fontName="Helvetica",
+                fontSize=8,
+                leading=10,
+                textColor=PDF_MUTED,
+            ),
+        )
+        filters.wrap(right - left - 20, 25)
+        filters.drawOn(pdf_canvas, left + 10, band_y + 5)
 
     _draw_report_pdf_footer(pdf_canvas, document, report)
     pdf_canvas.restoreState()
@@ -275,12 +271,15 @@ def _highlight_xlsx(report, sections):
     sheet.title = "Highlights"
     highlights = list(_highlight_sections(sections))
     has_groups = any(tables for _, _, tables in highlights)
-    sheet.append([report["title"] + " highlights"])
+    sheet.append([report["title"] + " Highlights"])
     sheet.merge_cells("A1:C1" if has_groups else "A1:B1")
     sheet["A1"].font = Font(size=16, bold=True, color="24466A")
     sheet.row_dimensions[1].height = 25
-    sheet.append(["Date range", f"{report['range']['from']} to {report['range']['to']}"])
-    sheet["A2"].font = Font(bold=True)
+    sheet.append(
+        [
+            f"From: {report['range']['from']}    To: {report['range']['to']}",
+        ]
+    )
     for label, value in report["applied_filters"].items():
         sheet.append([label, value])
     sheet.append([""])
@@ -338,7 +337,7 @@ def _highlight_xlsx(report, sections):
 def _highlight_pdf(report, sections):
     output = BytesIO()
     document = _report_pdf_document(
-        output, report, report["title"].title() + " Highlights", side_margin=40
+        output, report, report["title"] + " Highlights", side_margin=40
     )
     styles = getSampleStyleSheet()
     value_style = ParagraphStyle(
@@ -500,13 +499,16 @@ def _xlsx(report, sections):
         sheet.freeze_panes = "A5"
         sheet.row_dimensions[1].height = 25
         title = WriteOnlyCell(
-            sheet, value=f"{report['title'].title()}: {summary['title']}"
+            sheet, value=f"{report['title']}: {summary['title']}"
         )
         title.font = Font(size=15, bold=True, color="24466A")
         sheet.append([title])
         date_range = WriteOnlyCell(
             sheet,
-            value=f"Date range: {report['range']['from']} to {report['range']['to']}",
+            value=(
+                f"From: {report['range']['from']} "
+                f"To: {report['range']['to']}"
+            ),
         )
         date_range.font = Font(size=10, color="475569")
         sheet.append([date_range])
@@ -577,7 +579,7 @@ def _xlsx(report, sections):
 def _pdf(report, sections):
     output = BytesIO()
     document = _report_pdf_document(
-        output, report, report["title"].title(), side_margin=28
+        output, report, report["title"], side_margin=28
     )
     styles = getSampleStyleSheet()
     styles["BodyText"].fontSize = 8

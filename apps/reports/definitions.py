@@ -4,7 +4,10 @@ from zoneinfo import ZoneInfo
 
 REPORT_TIMEZONE = ZoneInfo("Africa/Dar_es_Salaam")
 EXPORT_ROW_LIMIT = 10_000
-REPORT_TITLES = {"financial": "Financial reports", "operational": "Operational reports"}
+REPORT_TITLES = {
+    "financial": "GemID Financial Reports",
+    "operational": "GemID Operational Reports",
+}
 REPORT_GATES = {
     "financial": "core.report_financial",
     "operational": "core.report_operational",
