@@ -438,8 +438,8 @@ def test_xlsx_exports_every_page_and_keeps_control_numbers_as_text(
     assert "attachment;" in response["Content-Disposition"]
     workbook = load_workbook(BytesIO(response.content))
     sheet = workbook["Bills Issued"]
-    assert sheet["A1"].value == "Financial Reports: Bills Issued"
-    assert sheet["A2"].value == "Date range: 2026-09-01 to 2026-09-30"
+    assert sheet["A1"].value == "GemID Financial Reports: Bills Issued"
+    assert sheet["A2"].value == "From: 2026-09-01 To: 2026-09-30"
     assert sheet["A4"].value == "Date"
     assert sheet.freeze_panes == "A5"
     assert sheet["A4"].border.right.style == "thin"
@@ -505,8 +505,8 @@ def test_full_orders_report_totals_submitted_stones(api_client, admin_user):
     assert response.status_code == 200
     workbook = load_workbook(BytesIO(response.content))
     orders = workbook["Orders received"]
-    assert orders["A1"].value == "Operational Reports: Orders received"
-    assert orders["A2"].value == "Date range: 2026-09-01 to 2026-09-30"
+    assert orders["A1"].value == "GemID Operational Reports: Orders received"
+    assert orders["A2"].value == "From: 2026-09-01 To: 2026-09-30"
     assert orders.cell(orders.max_row, 1).value == "Total orders: 1"
     assert orders.cell(orders.max_row, 4).value == 7
     stones = workbook["Stones registered"]
@@ -542,7 +542,7 @@ def test_highlights_xlsx_contains_only_authorized_summary_values(api_client, use
     assert workbook.sheetnames == ["Highlights"]
     values = list(workbook.active.values)
     assert workbook.active.max_column == 2
-    assert ("Date range", "2026-09-01 to 2026-09-30") in values
+    assert ("From: 2026-09-01    To: 2026-09-30", None) in values
     assert ("Bills Issued", None) in values
     assert ("Count", 1) in values
     assert ("Amount (TZS)", 100) in values
