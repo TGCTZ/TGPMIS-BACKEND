@@ -51,7 +51,7 @@ def _payment_xml(bill: Bill, amount: Decimal, trx_id: str) -> str:
     )
 
 
-def simulate_payment(bill: Bill, amount: Decimal | None = None) -> Bill:
+def simulate_payment(bill: Bill) -> Bill:
     """Pay a bill by feeding a fake GePG notification through the real handler.
 
     Assigns a control number first if the (offline) gateway never returned one, so the
@@ -59,11 +59,7 @@ def simulate_payment(bill: Bill, amount: Decimal | None = None) -> Bill:
     records a ``Payment``, settles the bill, and transitions the stones.
 
     Args:
-        bill: The bill to pay.
-        amount: How much to pay. Defaults to the balance outstanding, which
-            settles the bill. Pass less to reach ``PARTIALLY_PAID`` — the only
-            way to exercise that branch, since nothing else in the system can
-            produce a part-paid bill offline.
+        bill: The bill to pay in full.
 
     Returns:
         The bill, refreshed. Each call writes a new transaction id, so paying
@@ -73,12 +69,11 @@ def simulate_payment(bill: Bill, amount: Decimal | None = None) -> Bill:
         bill.control_number = _fake_control_number()
         bill.save(update_fields=["control_number", "updated_at"])
 
-    if amount is None:
-        paid = sum(
-            (payment.paid_amount or Decimal("0") for payment in bill.payments.all()),
-            Decimal("0"),
-        )
-        amount = max(Decimal("0"), bill.total_amount - paid)
+    paid = sum(
+        (payment.paid_amount or Decimal("0") for payment in bill.payments.all()),
+        Decimal("0"),
+    )
+    amount = max(Decimal("0"), bill.total_amount - paid)
 
     trx_id = f"SIM-{secrets.token_hex(6).upper()}"
     process_payment_notification(_payment_xml(bill, amount, trx_id))

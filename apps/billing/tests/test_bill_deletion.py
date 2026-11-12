@@ -100,7 +100,7 @@ def test_any_payment_history_blocks_admin_deletion(api_client, user):
     bill = _bill(OrderFactory(stone_count=1))
     Payment.objects.create(
         bill=bill,
-        trx_id="TRX-PARTIAL",
+        trx_id="TRX-UNDERPAY",
         paid_amount=Decimal("1.00"),
         bill_amount=bill.total_amount,
     )

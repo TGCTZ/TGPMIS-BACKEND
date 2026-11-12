@@ -223,19 +223,6 @@ class BillPreviewSerializer(serializers.Serializer):
     blockers = serializers.ListField(child=serializers.CharField())
 
 
-class SimulatePaymentSerializer(serializers.Serializer):
-    """Payload for the development-only payment simulation.
-
-    ``amount`` is optional and defaults to the balance outstanding. Pass less to
-    reach ``PARTIALLY_PAID``, which nothing else in the system can produce
-    offline.
-    """
-
-    amount = serializers.DecimalField(
-        max_digits=15, decimal_places=2, min_value=Decimal("0.01"), required=False
-    )
-
-
 class BillCancellationSerializer(serializers.Serializer):
     """Reason required to submit a cancellation request."""
 

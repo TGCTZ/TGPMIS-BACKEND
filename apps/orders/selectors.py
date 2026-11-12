@@ -117,8 +117,6 @@ def order_stage(order) -> str:
         and bill.status_code not in settings.GEPG_ACK_SUCCESS_CODES
     ):
         return OrderStage.BILLING_ATTENTION
-    if bill.status == BillStatus.PARTIALLY_PAID:
-        return OrderStage.PART_PAID
     if bill.status != BillStatus.PAID:
         return OrderStage.AWAITING_PAYMENT
 
@@ -263,12 +261,8 @@ def orders_at_stage(queryset, stage: str):
             & ~Q(bill__status_code__in=settings.GEPG_ACK_SUCCESS_CODES)
         )
 
-    if stage == OrderStage.PART_PAID:
-        return billed.filter(bill__status=BillStatus.PARTIALLY_PAID)
     if stage == OrderStage.AWAITING_PAYMENT:
-        return billed.exclude(bill__status=BillStatus.PARTIALLY_PAID).exclude(
-            bill__status=BillStatus.PAID
-        )
+        return billed.exclude(bill__status=BillStatus.PAID)
 
     paid = billed.filter(bill__status=BillStatus.PAID)
 

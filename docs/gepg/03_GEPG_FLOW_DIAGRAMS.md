@@ -35,7 +35,7 @@ flowchart TD
     H --> I["GePG sends pmtSpNtfReq<br/>callback"]
     I --> J["Match bill and<br/>record payment"]
     J --> K{"Total received covers bill?"}
-    K -->|No| L["Bill partially_paid;<br/>stones remain billed"]
+    K -->|No| L["Keep bill pending;<br/>stones remain billed"]
     L --> H
     K -->|Yes| M["Bill and stones paid;<br/>notify subscribers"]
     M --> N["Payment gate for findings<br/>is satisfied"]
@@ -231,7 +231,7 @@ flowchart TD
     G -->|No| H["Update existing payment;<br/>skip settlement recalculation"]
     G -->|Yes| I["Sum this bill's live payment amounts"]
     I --> J{"Sum at least bill total?"}
-    J -->|No| K["Set bill partially_paid"]
+    J -->|No| K["Keep bill pending"]
     J -->|Yes| L["Set bill paid; transition stones<br/>to paid; notify subscribers"]
     H --> M{"More transactions?"}
     K --> M
@@ -257,10 +257,8 @@ Sources: [payment service](../../apps/billing/services/payment.py), [parser and 
 stateDiagram-v2
     [*] --> pending: Local bill created; stones become billed
     pending --> pending: Submission result or control-number callback
-    pending --> partially_paid: New payment; cumulative amount below total
-    partially_paid --> partially_paid: Another payment; total still below bill
+    pending --> pending: New payment; cumulative amount below total
     pending --> paid: New payment; cumulative amount covers total
-    partially_paid --> paid: New payment; cumulative amount covers total
     paid --> paid: Additional payment; cumulative amount still covers total
 ```
 
@@ -271,7 +269,7 @@ This diagram assumes ordinary positive payments; inbound amount validation is li
 | Local bill created | `pending` | Transition to `billed` and record history |
 | Submission fails or waits for callback | Remains `pending` | Remain `billed` |
 | Control number received | Remains `pending` | No payment transition |
-| New payment leaves cumulative sum below total | `partially_paid` | No stone transition |
+| New payment leaves cumulative sum below total | `pending` | No stone transition |
 | New payment brings cumulative sum to or above total | `paid` | Transition all order stones to `paid`; notify bill-paid subscribers |
 | Same transaction redelivered | No recalculation | No transition |
 
@@ -298,7 +296,7 @@ flowchart TD
     L --> M["Refresh and return bill"]
 ```
 
-The payment API action also requires `billing.generate_bill`. Passing less than the balance exercises partial payment; omitting the amount uses the remaining balance. Each simulation creates a fresh transaction ID. The helper calls the service directly rather than making an HTTP request to the webhook, and it does not inspect the returned acknowledgement before returning the refreshed bill.
+The payment API action also requires `billing.generate_bill`. It always simulates payment of the outstanding balance in full. Each simulation creates a fresh transaction ID. The helper calls the service directly rather than making an HTTP request to the webhook, and it does not inspect the returned acknowledgement before returning the refreshed bill.
 
 The outbound `GEPG_SIMULATE` check alone does not require `DEBUG`. The frontend reads simulation availability from `/api/v1/config/`.
 
@@ -361,7 +359,7 @@ Bill/item/payment CRUD is read-only to API clients; the named actions and callba
 | [Bill service](../../apps/billing/services/bill.py) | Preview, local creation, submission tracking, retries, control-number callback |
 | [GePG operations service](../../apps/billing/services/gepg_operations.py) | Bill cancellation and reconciliation requests/callbacks |
 | [Gateway adapter](../../apps/billing/gateways/gepg.py) | Exact XML fields, HTTP transport, parsing, acknowledgement codes |
-| [Payment service](../../apps/billing/services/payment.py) | Matching, duplicate handling, partial/full settlement |
+| [Payment service](../../apps/billing/services/payment.py) | Matching, duplicate handling, full settlement |
 | [Models](../../apps/billing/models/bill.py), [serializers](../../apps/billing/serializers.py) | Stored records and exposed API fields |
 | [Billing tests](../../apps/billing/tests/test_billing.py), [automatic billing tests](../../apps/billing/tests/test_auto_billing.py) | Existing examples for settlement, redelivery, simulation, and retries |
 | [API examples](../../api.http) | Sample requests and callback XML |

@@ -93,7 +93,6 @@ class BillStatus(models.TextChoices):
     """
 
     PENDING = ("pending", "Pending")
-    PARTIALLY_PAID = ("partially_paid", "Partially paid")
     PAID = ("paid", "Paid")
     CANCELLED = ("cancelled", "Cancelled")
     EXPIRED = ("expired", "Expired")
@@ -130,7 +129,6 @@ class OrderStage(models.TextChoices):
     READY_TO_BILL = ("ready_to_bill", "Ready to bill")
     BILLING_ATTENTION = ("billing_attention", "Billing needs attention")
     AWAITING_PAYMENT = ("awaiting_payment", "Awaiting payment")
-    PART_PAID = ("part_paid", "Partly paid")
     IN_FINDINGS = ("in_findings", "Findings in progress")
     CERTIFIED = ("certified", "Certified")
     READY_FOR_COLLECTION = ("ready_for_collection", "Ready for collection")

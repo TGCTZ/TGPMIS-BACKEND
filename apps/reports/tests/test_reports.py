@@ -193,6 +193,10 @@ def test_outstanding_filters_issue_date_but_uses_payments_received_later(
     assert Decimal(response.data["results"][0]["balance"]) == Decimal("40")
     assert _summary(response, "collections")["count"] == 0
     assert _summary(response, "exceptions")["count"] == 1
+    exceptions = api_client.get(
+        "/api/v1/reports/financial/", DATES | {"section": "exceptions"}
+    )
+    assert exceptions.data["results"][0]["status"] == "Unprocessed"
 
 
 def test_cancelled_overpaid_and_deleted_bills_are_not_outstanding(api_client, admin_user):
@@ -221,6 +225,7 @@ def test_lab_day_boundaries_and_undated_notifications(api_client, admin_user):
     )
     assert response.data["count"] == 1
     assert response.data["results"][0]["event_date"] == "2026-09-01"
+    assert response.data["results"][0]["status"] == "Paid"
     assert _summary(response, "collections")["missing_dates"] == 1
     collection_section = next(
         section

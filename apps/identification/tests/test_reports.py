@@ -235,7 +235,7 @@ def test_finalize_endpoint_keeps_the_paid_bill_requirement(
     """An unpaid bill rolls back both finalization and automatic issuance."""
     report = create_finalizable_report(paid_stone, None)
     bill = paid_stone.order.bill
-    bill.status = BillStatus.PARTIALLY_PAID
+    bill.status = BillStatus.PENDING
     bill.save(update_fields=["status"])
 
     response = auth_client(admin_user).post(

@@ -19,8 +19,8 @@ without calling GePG. This gateway switch itself does not check `DEBUG`.
 The API's `POST /api/v1/bills/{id}/simulate-payment/` action requires **both**
 `DEBUG` and `GEPG_SIMULATE`, plus `billing.generate_bill`.
 
-Simulation feeds generated XML through the payment handler. An omitted amount
-pays the outstanding balance; a smaller amount exercises partial settlement.
+Simulation feeds generated XML through the payment handler and pays the
+outstanding balance in full.
 See [`apps/billing/dev.py`](../../apps/billing/dev.py).
 
 ## Current limitations

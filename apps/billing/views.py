@@ -47,7 +47,6 @@ from .serializers import (
     ReconciliationSerializer,
     RetryBillSerializer,
     ServiceProviderSerializer,
-    SimulatePaymentSerializer,
 )
 from .services import (
     cancel_bill,
@@ -136,7 +135,7 @@ class BillViewSet(viewsets.ReadOnlyModelViewSet):
         """Soft-delete an unpaid bill after GePG confirms cancellation if needed."""
         bill = self.get_object()
         if (
-            bill.status in {BillStatus.PAID, BillStatus.PARTIALLY_PAID}
+            bill.status == BillStatus.PAID
             or Payment.all_objects.filter(bill=bill).exists()
         ):
             return Response(
@@ -181,7 +180,7 @@ class BillViewSet(viewsets.ReadOnlyModelViewSet):
         with transaction.atomic():
             bill = Bill.objects.select_for_update().get(pk=bill.pk)
             if (
-                bill.status in {BillStatus.PAID, BillStatus.PARTIALLY_PAID}
+                bill.status == BillStatus.PAID
                 or Payment.all_objects.filter(bill=bill).exists()
             ):
                 return Response(
@@ -225,7 +224,7 @@ class BillViewSet(viewsets.ReadOnlyModelViewSet):
         )
         return Response(self.get_serializer(bill).data, status=status.HTTP_201_CREATED)
 
-    @extend_schema(request=SimulatePaymentSerializer, responses=BillSerializer)
+    @extend_schema(responses=BillSerializer)
     @action(detail=True, methods=["post"], url_path="simulate-payment")
     def simulate_payment(self, request, pk=None):
         """Pay this bill with a fabricated GePG notification. Development only.
@@ -242,10 +241,7 @@ class BillViewSet(viewsets.ReadOnlyModelViewSet):
         if not (settings.DEBUG and getattr(settings, "GEPG_SIMULATE", False)):
             raise Http404
 
-        payload = SimulatePaymentSerializer(data=request.data)
-        payload.is_valid(raise_exception=True)
-
-        bill = simulate_payment(self.get_object(), payload.validated_data.get("amount"))
+        bill = simulate_payment(self.get_object())
         return Response(self.get_serializer(bill).data)
 
     @extend_schema(

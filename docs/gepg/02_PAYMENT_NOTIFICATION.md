@@ -20,7 +20,8 @@ For each transaction, `_apply_payment()`:
 2. Creates a `Payment` keyed by `trx_id`, storing parsed fields and raw XML.
 3. For a new payment, sums the bill's live payment amounts. A total covering
    the bill sets `paid`, moves its stones to `paid`, and notifies bill-paid
-   subscribers. A lower total sets `partially_paid`.
+   subscribers. A lower cumulative total leaves the bill `pending` and its stones
+   billed until later transactions cover the full amount.
 4. For an existing transaction ID, updates the stored payment and returns
    without recomputing settlement or repeating the transitions.
 
@@ -51,7 +52,7 @@ notification can still settle its bill without creating a duplicate payment.
 
 Request examples are in [`api.http`](../../api.http). Use the same transaction ID
 to exercise redelivery, a new ID for another payment, and a smaller amount to
-exercise partial settlement. Use the [simulation helper](README.md#working-offline)
+settle the outstanding balance in full. Use the [simulation helper](README.md#working-offline)
 when the real gateway is unavailable.
 
 See the [production setup](04_GEPG_PRODUCTION_SETUP.md) for optional callback
