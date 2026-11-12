@@ -165,9 +165,7 @@ def test_underpaid_transactions_keep_the_bill_pending_until_fully_covered(
     first_amount = (bill.total_amount / Decimal("2")).quantize(Decimal("0.01"))
     second_amount = bill.total_amount - first_amount
 
-    process_payment_notification(
-        _payment_xml(bill, first_amount, "TRX-UNDERPAY-1")
-    )
+    process_payment_notification(_payment_xml(bill, first_amount, "TRX-UNDERPAY-1"))
 
     bill.refresh_from_db()
     assert bill.status == BillStatus.PENDING
@@ -176,9 +174,7 @@ def test_underpaid_transactions_keep_the_bill_pending_until_fully_covered(
         StoneStatus.BILLED
     }
 
-    process_payment_notification(
-        _payment_xml(bill, second_amount, "TRX-UNDERPAY-2")
-    )
+    process_payment_notification(_payment_xml(bill, second_amount, "TRX-UNDERPAY-2"))
 
     bill.refresh_from_db()
     assert bill.status == BillStatus.PAID

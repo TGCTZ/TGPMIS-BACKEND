@@ -26,8 +26,7 @@ SECTIONS = {
         "report": "financial",
         "title": "Payments received",
         "description": (
-            "Paid payments by transaction date; unprocessed exceptions are "
-            "separate."
+            "Paid payments by transaction date; unprocessed exceptions are separate."
         ),
         "permissions": ("billing.view_payment",),
     },

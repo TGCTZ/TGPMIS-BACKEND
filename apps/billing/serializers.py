@@ -1,7 +1,5 @@
 """Serializers for the billing domain."""
 
-from decimal import Decimal
-
 from rest_framework import serializers
 
 from apps.core.serializers import AuditFieldsMixin, DisplayReferenceField
