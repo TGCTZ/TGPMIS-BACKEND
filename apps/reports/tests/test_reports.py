@@ -30,7 +30,7 @@ def test_schema_documents_report_filters_and_binary_exports():
 
     schema = SchemaGenerator().get_schema(request=None, public=True)
     result = schema["paths"]["/api/v1/reports/financial/"]["get"]
-    assert {"from_date", "to_date", "section", "page_size"}.issubset(
+    assert {"from_date", "to_date", "section", "page_size", "search"}.issubset(
         {parameter["name"] for parameter in result["parameters"]}
     )
     content = schema["paths"]["/api/v1/reports/financial/export/"]["get"]["responses"][
@@ -409,6 +409,27 @@ def test_financial_rows_use_control_numbers_without_exposing_customer_data(
     )
     assert "provider" not in {column["key"] for column in collections.data["columns"]}
     assert "provider" not in collections.data["results"][0]
+
+
+def test_report_search_matches_rows_outside_the_selected_date_range(
+    api_client, admin_user
+):
+    """A search term spans all report dates even when the period excludes a row."""
+    bill = _bill(control_number="991234567890")
+    api_client.force_authenticate(admin_user)
+    response = api_client.get(
+        "/api/v1/reports/financial/",
+        {
+            "from_date": "2026-10-01",
+            "to_date": "2026-10-31",
+            "search": "991234",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.data["count"] == 1
+    assert response.data["results"][0]["id"] == bill.pk
+    assert response.data["range"]["from"] == response.data["range"]["to"] == "All dates"
 
 
 def test_operational_reports_keep_customer_filter_and_column(api_client, user):
