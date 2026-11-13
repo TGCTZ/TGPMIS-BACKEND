@@ -4,11 +4,21 @@ Amounts are aggregated before pagination. Payment sums use a correlated subquery
 so joining an order's stones cannot multiply the money attributed to its bill.
 """
 
+import re
 from datetime import datetime, time, timedelta
 from decimal import Decimal
 
-from django.db.models import Count, DecimalField, F, OuterRef, Q, Subquery, Sum
-from django.db.models.functions import Coalesce, Greatest
+from django.db.models import (
+    CharField,
+    Count,
+    DecimalField,
+    F,
+    OuterRef,
+    Q,
+    Subquery,
+    Sum,
+)
+from django.db.models.functions import Cast, Coalesce, Greatest
 from django.utils import timezone
 
 from apps.billing.models import Bill, BillItem, Payment
@@ -21,6 +31,138 @@ from apps.orders.models import Order, Stone
 from .definitions import REPORT_TIMEZONE, section_info
 
 MONEY_FIELD = DecimalField(max_digits=18, decimal_places=2)
+
+
+def _search_report_rows(queryset, key: str, term: str):
+    """Match the values exposed in a section's detail table across all rows."""
+    if not term:
+        return queryset
+
+    date_field = {
+        "billing": "issued_at",
+        "outstanding": "issued_at",
+        "collections": "trx_dt_tm",
+        "exceptions": "trx_dt_tm",
+        "orders": "received_date",
+        "stones": "created_at",
+        "findings": "identified_at",
+        "certificates": "issued_at",
+    }[key]
+    text_fields = {
+        "billing": (
+            "bill_number",
+            "control_number",
+            "order__reference_number",
+            "status",
+            "currency",
+        ),
+        "outstanding": (
+            "bill_number",
+            "control_number",
+            "order__reference_number",
+            "status",
+            "currency",
+        ),
+        "collections": (
+            "trx_id",
+            "pay_ref_id",
+            "bill__control_number",
+            "bill__order__reference_number",
+            "currency",
+        ),
+        "exceptions": (
+            "trx_id",
+            "pay_ref_id",
+            "bill__control_number",
+            "bill__order__reference_number",
+            "currency",
+        ),
+        "orders": (
+            "reference_number",
+            "customer__first_name",
+            "customer__middle_name",
+            "customer__last_name",
+        ),
+        "stones": (
+            "label",
+            "order__reference_number",
+            "order__customer__first_name",
+            "order__customer__middle_name",
+            "order__customer__last_name",
+            "stone_type__name",
+            "stone_category__name",
+        ),
+        "findings": (
+            "report_number",
+            "stone__label",
+            "stone__order__reference_number",
+            "stone__order__customer__first_name",
+            "stone__order__customer__middle_name",
+            "stone__order__customer__last_name",
+            "stone__stone_type__name",
+            "stone__stone_category__name",
+        ),
+        "certificates": (
+            "certificate_number",
+            "stone__label",
+            "stone__order__reference_number",
+            "stone__order__customer__first_name",
+            "stone__order__customer__middle_name",
+            "stone__order__customer__last_name",
+            "stone__stone_type__name",
+            "stone__stone_category__name",
+            "variety_snapshot",
+            "status",
+        ),
+    }[key]
+    queryset = queryset.annotate(report_event_date_text=Cast(date_field, CharField()))
+    query = Q(report_event_date_text__icontains=term)
+    for field in text_fields:
+        query |= Q(**{f"{field}__icontains": term})
+
+    # References are displayed as PREFIX-YY/YY-sequence but stored with the
+    # first year only, so translate a displayed identifier before matching it.
+    reference = re.fullmatch(
+        r"(?P<prefix>[A-Z]+)-(?P<year>\d{2})/\d{2}-(?P<sequence>\d+)",
+        term,
+        re.IGNORECASE,
+    )
+    if reference:
+        stored_reference = (
+            f"{reference['prefix']}-{2000 + int(reference['year'])}-"
+            f"{reference['sequence']}"
+        )
+        reference_fields = {
+            "bill_number",
+            "certificate_number",
+            "order__reference_number",
+            "bill__order__reference_number",
+            "report_number",
+            "stone__order__reference_number",
+        }
+        for field in reference_fields.intersection(text_fields):
+            query |= Q(**{f"{field}__icontains": stored_reference})
+
+    numeric_fields = {
+        "billing": ("total_amount",),
+        "outstanding": ("total_amount", "amount_paid", "balance"),
+        "collections": ("paid_amount",),
+        "exceptions": ("paid_amount",),
+        "orders": ("stone_count",),
+        "stones": (),
+        "findings": (),
+        "certificates": (),
+    }[key]
+    numeric_term = term.replace(",", "")
+    for field in numeric_fields:
+        query |= Q(**{f"{field}_text__icontains": numeric_term})
+        queryset = queryset.annotate(**{f"{field}_text": Cast(field, CharField())})
+    if key in ("collections", "exceptions"):
+        if term.lower() in ("paid", "processed", "true", "1"):
+            query |= Q(is_processed=True)
+        elif term.lower() in ("unprocessed", "false", "0"):
+            query |= Q(is_processed=False)
+    return queryset.filter(query)
 
 
 def _bill_source():
@@ -139,19 +281,22 @@ def section_queryset(key: str, filters: dict):
         queryset = queryset.filter(**stone_filters)
         if key == "orders":
             queryset = queryset.distinct()
+    search_term = filters.get("search", "").strip()
+    queryset = _search_report_rows(queryset, key, search_term)
     missing_dates = queryset.filter(**{f"{date_field}__isnull": True}).count()
-    if key == "orders":
-        queryset = queryset.filter(
-            received_date__range=(filters["from_date"], filters["to_date"])
-        )
-    else:
-        start = datetime.combine(filters["from_date"], time.min, REPORT_TIMEZONE)
-        end = datetime.combine(filters["to_date"], time.min, REPORT_TIMEZONE) + timedelta(
-            days=1
-        )
-        queryset = queryset.filter(
-            **{f"{date_field}__gte": start, f"{date_field}__lt": end}
-        )
+    if not search_term:
+        if key == "orders":
+            queryset = queryset.filter(
+                received_date__range=(filters["from_date"], filters["to_date"])
+            )
+        else:
+            start = datetime.combine(filters["from_date"], time.min, REPORT_TIMEZONE)
+            end = datetime.combine(
+                filters["to_date"], time.min, REPORT_TIMEZONE
+            ) + timedelta(days=1)
+            queryset = queryset.filter(
+                **{f"{date_field}__gte": start, f"{date_field}__lt": end}
+            )
     return queryset.order_by(f"-{date_field}", "-pk"), missing_dates
 
 

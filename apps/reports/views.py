@@ -96,8 +96,16 @@ class ReportView(APIView):
             "report": self.kind,
             "title": REPORT_TITLES[self.kind],
             "range": {
-                "from": filters["from_date"].isoformat(),
-                "to": filters["to_date"].isoformat(),
+                "from": (
+                    "All dates"
+                    if filters.get("search", "").strip()
+                    else filters["from_date"].isoformat()
+                ),
+                "to": (
+                    "All dates"
+                    if filters.get("search", "").strip()
+                    else filters["to_date"].isoformat()
+                ),
                 "timezone": str(REPORT_TIMEZONE),
             },
             "generated_at": timezone.now(),

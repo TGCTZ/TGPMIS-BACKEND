@@ -17,6 +17,7 @@ class ReportQuerySerializer(serializers.Serializer):
     section = serializers.ChoiceField(choices=tuple(SECTIONS), required=False)
     customer = serializers.IntegerField(min_value=1, required=False)
     status = serializers.ChoiceField(choices=BillStatus.choices, required=False)
+    search = serializers.CharField(required=False, allow_blank=True, max_length=200)
     stone_type = serializers.IntegerField(min_value=1, required=False)
     page = serializers.IntegerField(min_value=1, default=1)
     page_size = serializers.IntegerField(min_value=1, max_value=100, default=15)
@@ -27,7 +28,7 @@ class ReportQuerySerializer(serializers.Serializer):
         today = timezone.localdate(timezone=REPORT_TIMEZONE)
         attrs.setdefault("from_date", today.replace(day=1))
         attrs.setdefault("to_date", today)
-        if attrs["from_date"] > attrs["to_date"]:
+        if attrs["from_date"] > attrs["to_date"] and not attrs.get("search", "").strip():
             raise serializers.ValidationError(
                 "The start date must be on or before the end."
             )
