@@ -162,9 +162,7 @@ class ReportExportView(ReportView):
         response = HttpResponse(content, content_type=content_type)
         from_date = date.fromisoformat(report["range"]["from"]).strftime("%d-%m-%Y")
         to_date = date.fromisoformat(report["range"]["to"]).strftime("%d-%m-%Y")
-        filename = (
-            f"{self.kind}-reports-{from_date}-{to_date}.{file_type}"
-        )
+        filename = f"{self.kind}-reports-{from_date}-{to_date}.{file_type}"
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
         return response
 
@@ -195,8 +193,6 @@ class ReportHighlightsExportView(ReportView):
         response = HttpResponse(content, content_type=content_type)
         from_date = date.fromisoformat(report["range"]["from"]).strftime("%d-%m-%Y")
         to_date = date.fromisoformat(report["range"]["to"]).strftime("%d-%m-%Y")
-        filename = (
-            f"{self.kind}-highlights-{from_date}-{to_date}.{file_type}"
-        )
+        filename = f"{self.kind}-highlights-{from_date}-{to_date}.{file_type}"
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
         return response

@@ -51,9 +51,11 @@ def notify(
             for recipient_id in recipient_ids
         )
         if sms_message and recipient_ids:
-            phone_numbers = get_user_model().objects.filter(
-                pk__in=recipient_ids
-            ).values_list("phone_number", flat=True)
+            phone_numbers = (
+                get_user_model()
+                .objects.filter(pk__in=recipient_ids)
+                .values_list("phone_number", flat=True)
+            )
             send_sms(phone_numbers, sms_message, context=f"{kind} notification")
 
     transaction.on_commit(deliver, robust=True)
