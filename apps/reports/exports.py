@@ -1,5 +1,6 @@
 """Generate complete filtered downloads from the same projections as the API."""
 
+from datetime import date
 from decimal import Decimal
 from io import BytesIO
 from math import ceil
@@ -38,6 +39,14 @@ PDF_BLUE = colors.HexColor("#0152a9")
 PDF_NAVY = colors.HexColor("#000080")
 PDF_GOLD = colors.HexColor("#e4a41e")
 PDF_MUTED = colors.HexColor("#475569")
+
+
+def _display_date(value):
+    """Format ISO calendar dates for people reading an exported report."""
+    try:
+        return date.fromisoformat(str(value)).strftime("%d/%m/%Y")
+    except ValueError:
+        return str(value)
 
 
 def _draw_pdf_mark(pdf_canvas, name, x, y, width, height):
@@ -128,7 +137,8 @@ def _draw_report_pdf_page(pdf_canvas, document, report, title):
     pdf_canvas.drawString(
         left + 10,
         band_y + 37,
-        f"From: {report['range']['from']}    To: {report['range']['to']}",
+        f"From: {_display_date(report['range']['from'])}    "
+        f"To: {_display_date(report['range']['to'])}",
     )
     if report["applied_filters"]:
         filter_text = ", ".join(
@@ -163,7 +173,7 @@ def _draw_report_pdf_footer(pdf_canvas, document, report):
     generated_at = report.get("generated_at")
     if generated_at:
         generated = timezone.localtime(generated_at, REPORT_TIMEZONE).strftime(
-            "%Y-%m-%d %H:%M"
+            "%d/%m/%Y %H:%M"
         )
         pdf_canvas.drawString(left, 21, f"Generated {generated} EAT")
     else:
@@ -277,7 +287,8 @@ def _highlight_xlsx(report, sections):
     sheet.row_dimensions[1].height = 25
     sheet.append(
         [
-            f"From: {report['range']['from']}    To: {report['range']['to']}",
+            f"From: {_display_date(report['range']['from'])}    "
+            f"To: {_display_date(report['range']['to'])}",
         ]
     )
     for label, value in report["applied_filters"].items():
@@ -503,7 +514,10 @@ def _xlsx(report, sections):
         sheet.append([title])
         date_range = WriteOnlyCell(
             sheet,
-            value=(f"From: {report['range']['from']} To: {report['range']['to']}"),
+            value=(
+                f"From: {_display_date(report['range']['from'])} "
+                f"To: {_display_date(report['range']['to'])}"
+            ),
         )
         date_range.font = Font(size=10, color="475569")
         sheet.append([date_range])
@@ -537,6 +551,8 @@ def _xlsx(report, sections):
             cells = []
             for index, column in enumerate(columns):
                 value = row[column["key"]]
+                if column["kind"] == "date":
+                    value = _display_date(value)
                 cell = WriteOnlyCell(sheet, value=value)
                 cell.alignment = Alignment(wrap_text=True, vertical="top")
                 if index < len(columns) - 1:
@@ -608,7 +624,14 @@ def _pdf(report, sections):
                 [
                     Paragraph(escape(f"{Decimal(row[column['key']]):,.2f}"), money_style)
                     if column["kind"] == "money"
-                    else Paragraph(escape(str(row[column["key"]])), styles["BodyText"])
+                    else Paragraph(
+                        escape(
+                            _display_date(row[column["key"]])
+                            if column["kind"] == "date"
+                            else str(row[column["key"]])
+                        ),
+                        styles["BodyText"],
+                    )
                     for column in columns
                 ]
             )

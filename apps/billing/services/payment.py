@@ -93,22 +93,26 @@ def _apply_payment(header: dict, txn: dict, raw: str) -> None:
 
     paid = sum((p.paid_amount or Decimal("0") for p in bill.payments.all()), Decimal("0"))
     if paid >= bill.total_amount:
+        newly_paid = bill.status != BillStatus.PAID
         bill.status = BillStatus.PAID
         # The gateway is the actor here, so there is no user to attribute.
         for stone in bill.order.stones.all():
             transition_stone(stone, StoneStatus.PAID, note="Bill settled via GePG")
-        notify_subscribers(
-            NotificationKind.BILL_PAID,
-            title=(
-                f"Order {format_reference_number(bill.order.reference_number)} "
-                "has been paid"
-            ),
-            body=(
-                f"Bill {format_reference_number(bill.bill_number)} is settled; "
-                "findings can now be recorded."
-            ),
-            link="/identification-reports?source=waiting",
-        )
+        if newly_paid:
+            order_reference = format_reference_number(bill.order.reference_number)
+            notify_subscribers(
+                NotificationKind.BILL_PAID,
+                title=f"Order {order_reference} has been paid",
+                body=(
+                    f"Bill {format_reference_number(bill.bill_number)} is settled; "
+                    "findings can now be recorded."
+                ),
+                link="/identification-reports?source=waiting",
+                sms_message=(
+                    f"Order {order_reference} has been paid. Please proceed with "
+                    "recording the findings in GemID."
+                ),
+            )
     else:
         bill.status = BillStatus.PENDING
     bill.save(update_fields=["status", "updated_at"])
