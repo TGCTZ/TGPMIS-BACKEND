@@ -1,5 +1,7 @@
 """Thin read-only endpoints for permission-scoped reports and downloads."""
 
+from datetime import date
+
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
 from rest_framework.exceptions import PermissionDenied, ValidationError
@@ -158,9 +160,10 @@ class ReportExportView(ReportView):
             else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
         response = HttpResponse(content, content_type=content_type)
+        from_date = date.fromisoformat(report["range"]["from"]).strftime("%d-%m-%Y")
+        to_date = date.fromisoformat(report["range"]["to"]).strftime("%d-%m-%Y")
         filename = (
-            f"{self.kind}-reports-{report['range']['from']}-"
-            f"{report['range']['to']}.{file_type}"
+            f"{self.kind}-reports-{from_date}-{to_date}.{file_type}"
         )
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
         return response
@@ -190,9 +193,10 @@ class ReportHighlightsExportView(ReportView):
             else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
         response = HttpResponse(content, content_type=content_type)
+        from_date = date.fromisoformat(report["range"]["from"]).strftime("%d-%m-%Y")
+        to_date = date.fromisoformat(report["range"]["to"]).strftime("%d-%m-%Y")
         filename = (
-            f"{self.kind}-highlights-{report['range']['from']}-"
-            f"{report['range']['to']}.{file_type}"
+            f"{self.kind}-highlights-{from_date}-{to_date}.{file_type}"
         )
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
         return response
